@@ -1,15 +1,15 @@
-name: CI
+name: Quality Checks
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, feat/*]
   pull_request:
     branches: [main, develop]
 
 jobs:
   quality-checks:
     runs-on: ubuntu-latest
-    name: Code Quality & Build
+    name: Code Quality Assurance
 
     steps:
       - name: Checkout code
@@ -27,8 +27,7 @@ jobs:
 
       - name: Get pnpm store directory
         shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Setup pnpm cache
         uses: actions/cache@v4
@@ -41,25 +40,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check code formatting
-        run: pnpm format:check
-
-      - name: Run ESLint
-        run: pnpm lint
-
-      - name: Type check
-        run: pnpm build --dry-run || pnpm tsc --noEmit
-
-      - name: Build project
-        run: pnpm build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY || 'placeholder-key' }}
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: build-files
-          path: .next/
-          retention-days: 1
+      - name: Run all quality checks
+        run: pnpm quality
