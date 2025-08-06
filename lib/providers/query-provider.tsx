@@ -1,0 +1,56 @@
+"use client";
+
+import { useState } from "react";
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+
+interface QueryProviderProps {
+  children: React.ReactNode;
+}
+
+export function QueryProvider({ children }: QueryProviderProps) {
+  // Create a new QueryClient instance for each component tree
+  // This ensures that data is not shared between different users/sessions
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            // With SSR, we usually want to set some default staleTime
+            // above 0 to avoid refetching immediately on the client
+            staleTime: 60 * 1000, // 1 minute
+            // Retry failed requests up to 3 times
+            retry: 3,
+            // Refetch on window focus for real-time updates
+            refetchOnWindowFocus: true,
+            // Refetch when user comes back online
+            refetchOnReconnect: true,
+          },
+          mutations: {
+            // Retry failed mutations once
+            retry: 1,
+            // Show error notifications for failed mutations
+            onError: (error) => {
+              console.error("Mutation error:", error);
+              // TODO: Add toast notification here
+            },
+          },
+        },
+      })
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      {/* Only show devtools in development */}
+      {process.env.NODE_ENV === "development" && (
+        <ReactQueryDevtools
+          initialIsOpen={false}
+          buttonPosition="bottom-right"
+          position="bottom"
+        />
+      )}
+    </QueryClientProvider>
+  );
+}
