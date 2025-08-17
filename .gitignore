@@ -43,3 +43,5 @@ next-env.d.ts
 
 # planning folder
 /planning
+
+/lib/generated/prisma
