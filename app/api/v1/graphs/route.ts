@@ -5,8 +5,10 @@ import { prisma } from "@/lib/db";
 
 export async function GET(req: Request) {
   try {
-    const { userId } = await auth();
-    if (!userId) return Errors.forbidden();
+    const { userId: clerkUserId } = await auth();
+    if (!clerkUserId) return Errors.forbidden();
+    const owner = await prisma.user.findUnique({ where: { clerkUserId } });
+    if (!owner) return Errors.forbidden();
 
     const url = new URL(req.url);
     const limit = Math.min(
@@ -16,7 +18,7 @@ export async function GET(req: Request) {
     const cursor = url.searchParams.get("cursor");
 
     const items = await prisma.graph.findMany({
-      where: { userId },
+      where: { userId: owner.id },
       orderBy: { lastActivityAt: "desc" },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

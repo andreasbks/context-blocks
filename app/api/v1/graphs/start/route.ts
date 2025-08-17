@@ -8,11 +8,21 @@ import {
 import { StartGraphBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
+import { ensureCurrentUserExists } from "@/lib/users/ensure-user";
 
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return Errors.forbidden();
+
+    // Ensure DB user exists and get internal user id (cuid)
+    await ensureCurrentUserExists();
+    const owner = await prisma.user.findUnique({
+      where: { clerkUserId: userId },
+    });
+    if (!owner) {
+      return jsonError("INTERNAL", "Authenticated user record missing");
+    }
 
     // Idempotency replay
     const cached = await getCachedIdempotentResponse(req, userId);
@@ -32,12 +42,12 @@ export async function POST(req: Request) {
 
     const result = await prisma.$transaction(async (tx) => {
       const graph = await tx.graph.create({
-        data: { userId, title: title ?? null },
+        data: { userId: owner.id, title: title ?? null },
       });
 
       const block = await tx.contextBlock.create({
         data: {
-          userId,
+          userId: owner.id,
           kind: firstMessage.author,
           content: firstMessage.content as unknown as Prisma.InputJsonValue,
           model: firstMessage.model ?? null,
