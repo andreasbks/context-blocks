@@ -55,6 +55,8 @@ Create a lightweight domain/service layer to keep handlers thin:
 - `lib/api/errors.ts` – error constructors that return the unified envelope + HTTP status codes.
 - `lib/api/validation.ts` – Zod schemas for request bodies/query.
 - `lib/api/idempotency.ts` – utilities to read/write idempotency cache in DB.
+- `lib/api/auth.ts` – `requireOwner()` helper: ensures Clerk auth, upserts/fetches Prisma `User` by
+  `clerkUserId`, returns internal `owner.id`.
 - `lib/api/guards.ts` – raw SQL helpers for cycle and reachability checks using `prisma.$queryRaw`
   (from spec).
 - `lib/api/transactions.ts` – exported functions implementing intents using Prisma transactions:

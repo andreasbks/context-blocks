@@ -1,0 +1,107 @@
+import { requireOwner } from "@/lib/api/auth";
+import { Errors, jsonError } from "@/lib/api/errors";
+import { ReplaceTipBody } from "@/lib/api/validation";
+import { prisma } from "@/lib/db";
+import type { Prisma } from "@/lib/generated/prisma";
+
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ branchId: string }> }
+) {
+  try {
+    const ownerOrRes = await requireOwner();
+    if (ownerOrRes instanceof Response) return ownerOrRes;
+    const { owner } = ownerOrRes;
+
+    const { branchId } = await params;
+    const body = await req.json().catch(() => null);
+    const parsed = ReplaceTipBody.safeParse(body);
+    if (!parsed.success)
+      return Errors.validation("Invalid request body", parsed.error.flatten());
+    const { newContent, expectedVersion } = parsed.data;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const br = await tx.branch.findUnique({
+        where: { id: branchId },
+        include: { graph: true },
+      });
+      if (!br) return { error: Errors.notFound("Branch") };
+      if (br.graph.userId !== owner.id) return { error: Errors.forbidden() };
+      if (!br.tipNodeId)
+        return { error: Errors.validation("Branch tip missing") };
+
+      // Find incoming follows edge to current tip
+      const incoming = await tx.blockEdge.findFirst({
+        where: {
+          graphId: br.graphId,
+          childNodeId: br.tipNodeId,
+          relation: "follows",
+          deletedAt: null,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!incoming)
+        return {
+          error: Errors.validation("Cannot replace root tip without parent"),
+        };
+
+      // Soft-delete old edge
+      await tx.blockEdge.update({
+        where: { id: incoming.id },
+        data: { deletedAt: new Date() },
+      });
+
+      // Create new block/node
+      const block = await tx.contextBlock.create({
+        data: {
+          userId: owner.id,
+          kind: "user",
+          content: newContent as unknown as Prisma.InputJsonValue,
+          public: false,
+        },
+      });
+      const node = await tx.graphNode.create({
+        data: { graphId: br.graphId, blockId: block.id },
+      });
+
+      // Insert replacement follows edge preserving ord
+      await tx.blockEdge.create({
+        data: {
+          graphId: br.graphId,
+          parentNodeId: incoming.parentNodeId,
+          childNodeId: node.id,
+          relation: "follows",
+          ord: incoming.ord ?? 0,
+        },
+      });
+
+      // CAS tip/version
+      const updated = await tx.branch.updateMany({
+        where: { id: br.id, version: expectedVersion ?? br.version },
+        data: { tipNodeId: node.id, version: { increment: 1 } },
+      });
+      if (updated.count === 0)
+        return { error: Errors.conflictTip(br.tipNodeId, br.version) };
+
+      await tx.graph.update({
+        where: { id: br.graphId },
+        data: { lastActivityAt: new Date() },
+      });
+
+      return {
+        item: { nodeId: node.id, block },
+        newTip: node.id,
+        version: br.version + 1,
+      };
+    });
+
+    if ("error" in result && result.error instanceof Response)
+      return result.error;
+    return new Response(JSON.stringify(result), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("POST /v1/branches/{branchId}:replaceTip error", err);
+    return jsonError("INTERNAL", "Internal server error");
+  }
+}

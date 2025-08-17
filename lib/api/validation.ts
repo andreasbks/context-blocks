@@ -38,3 +38,17 @@ export const AppendBody = z.object({
 });
 
 export type AppendInput = z.infer<typeof AppendBody>;
+
+export const InjectBody = z.object({
+  blockId: z.string(),
+  reuseExistingNode: z.boolean().optional(),
+});
+
+export type InjectInput = z.infer<typeof InjectBody>;
+
+export const ReplaceTipBody = z.object({
+  newContent: MessageContentSchema,
+  expectedVersion: z.number().int().nonnegative().optional(),
+});
+
+export type ReplaceTipInput = z.infer<typeof ReplaceTipBody>;
