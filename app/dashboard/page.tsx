@@ -1,7 +1,12 @@
 import { currentUser } from "@clerk/nextjs/server";
 
+import { ensureCurrentUserExists } from "@/lib/users/ensure-user";
+
 export default async function DashboardPage() {
   const user = await currentUser();
+  if (user) {
+    await ensureCurrentUserExists();
+  }
 
   return (
     <div className="flex-1 flex flex-col justify-center items-center max-w-4xl p-5">

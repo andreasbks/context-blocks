@@ -2,8 +2,13 @@ import Link from "next/link";
 
 import { auth } from "@clerk/nextjs/server";
 
+import { ensureCurrentUserExists } from "@/lib/users/ensure-user";
+
 export default async function Home() {
   const { isAuthenticated } = await auth();
+  if (isAuthenticated) {
+    await ensureCurrentUserExists();
+  }
 
   return (
     <div className="flex-1 flex flex-col justify-center items-center max-w-4xl p-5">
