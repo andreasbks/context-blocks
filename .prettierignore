@@ -11,6 +11,7 @@ dist/
 # Environment files
 .env
 .env.*
+.env.example
 
 # Logs
 *.log
@@ -55,10 +56,6 @@ pnpm-lock.yaml
 # Generated files
 *.tsbuildinfo
 .eslintcache
-
-# Supabase
-.branches
-.temp
 
 # Vercel
 .vercel

@@ -1,21 +1,17 @@
+"use client";
+
 import Link from "next/link";
 
-import { LogoutButton } from "@/components/auth/logout-button";
-import { createClient } from "@/lib/supabase/server";
+import { UserButton, useAuth } from "@clerk/nextjs";
 
 import { Button } from "../ui/button";
 
-export async function AuthButton() {
-  const supabase = await createClient();
+export function AuthButton() {
+  const { isSignedIn } = useAuth();
 
-  // You can also use getUser() which will be slower.
-  const { data } = await supabase.auth.getClaims();
-
-  const user = data?.claims;
-
-  return user ? (
+  return isSignedIn ? (
     <div className="flex items-center gap-4">
-      <LogoutButton />
+      <UserButton />
     </div>
   ) : (
     <div className="flex gap-2">

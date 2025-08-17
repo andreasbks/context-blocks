@@ -1,44 +1,26 @@
-# GenAI Context Blocks Chat
+# Context Blocks Chat
 
-**Modular, branchable AI chat platform built with Next.js, Supabase, and shadcn/ui.**
-
----
-
-## Vision
-
-GenAI Context Blocks Chat transforms the way you interact with AI:  
-No more single-threaded conversations.  
-**Branch, remix, and merge conversations**—explore ideas in parallel, build reusable knowledge
-blocks, and manage context flexibly.
+Modular, branchable AI chat platform built with Next.js, Clerk, Prisma, Neon, and shadcn/ui.
 
 ---
 
 ## Features
 
-- **Branchable Context Blocks:** Any message can become a starting point for new ideas. Fork,
-  branch, and compare conversations—like code, but for chat.
-- **Reusable & Global Context:** Save and re-inject context blocks anywhere across your chats. Build
-  your own AI context library.
-- **Modern UI:** Beautiful, accessible, and composable interface with
-  [shadcn/ui](https://ui.shadcn.com/), [Radix UI](https://www.radix-ui.com/), and Tailwind CSS.
-- **Reliable Backend:** Built on Supabase Postgres for data, auth, and scaling.
-- **Plug-and-Play LLMs:** Easily swap between OpenAI, Anthropic, or your own open-source models.
-- **Open Source & Extensible:** Modular architecture, ready for community contribution and custom
-  extensions.
+- **Branchable Context Blocks:** Fork and compare conversations like code.
+- **Reusable Context:** Save and reuse context blocks across chats.
+- **Modern UI:** Built with shadcn/ui, Radix UI, and Tailwind CSS.
+- **Auth + DB:** Clerk for authentication; Prisma ORM with Neon Postgres.
+- **DX:** Type-safe, modular, and ready for extension.
 
 ---
 
 ## Tech Stack
 
-- **Frontend & Custom Backend Logic:** [Next.js](https://nextjs.org/) (App Router)
-  - UI built with [shadcn/ui](https://ui.shadcn.com/), [Radix UI](https://www.radix-ui.com/), and
-    [Tailwind CSS](https://tailwindcss.com/)
-  - API routes and server actions for all custom business logic (context branching, LLM calls, etc.)
-- **Database & Authentication:** [Supabase](https://supabase.com/)
-  - Managed Postgres database for storing chats, context blocks, and user data
-  - Built-in auth for secure user sign-up, login, and session management
-- **LLM Providers:** OpenAI, Anthropic, or local open-source models (plug-and-play adapters)
-- **Deployment:** [Vercel](https://vercel.com/) (or any platform that supports Next.js)
+- **Frontend:** Next.js (App Router)
+- **Auth:** Clerk (`@clerk/nextjs`)
+- **Database/ORM:** Neon Postgres + Prisma
+- **State:** TanStack Query
+- **UI:** shadcn/ui, Radix UI, Tailwind CSS
 
 ---
 
@@ -46,124 +28,85 @@ blocks, and manage context flexibly.
 
 ```plaintext
 .
-├── app/             # Next.js App Router (UI pages, API routes)
-│   ├── api/         # Backend logic (chat, blocks, LLM, auth)
-│   └── ...          # UI pages (chat views, settings, etc.)
-├── components/      # UI components (ChatTree, ContextBlock, etc.)
-├── lib/             # Core business logic (Supabase, adapters, helpers)
-├── public/          # Static assets
-├── styles/          # Tailwind and global CSS
-├── .env.example     # Example environment variables
+├── app/                 # Next.js App Router (pages, layouts)
+├── components/          # UI components
+│   ├── auth/            # Auth-related UI
+│   └── ui/              # shadcn/ui wrappers
+├── lib/
+│   ├── constants/       # Query keys and constants
+│   ├── generated/       # Generated code (e.g., Prisma client)
+│   ├── hooks/           # Custom hooks
+│   ├── providers/       # React providers (QueryProvider, etc.)
+│   └── db.ts            # Prisma client helper
+├── prisma/              # Prisma schema and migrations
+├── docs/adr/            # Architecture decision records
+├── middleware.ts        # Clerk middleware
 ├── README.md
 └── ...
 ```
 
 ---
 
-## The Concept: Conversational Blocks
+## Getting Started
 
-Traditional chat is linear.  
-**GenAI Context Blocks Chat** is nonlinear—built around modular “blocks” you can move, branch,
-remix, and reuse.
+### Prerequisites
 
-### What is a Block?
+- Node.js 18+ and pnpm
+- Clerk account (publishable + secret keys)
+- Neon (or any Postgres) connection string
 
-A **Block** is any discrete unit of context in a conversation:
+### Setup
 
-- A single message
-- A group of related messages
-- An imported document, file, or chunk of text
-- An LLM-generated summary or suggestion
+1. Create `.env.local` with your credentials:
 
-**Blocks are modular and interactive—like Lego for ideas.**
+```bash
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+# Use pooled connection for serverless (Neon)
+DATABASE_URL="postgresql://<user>:<password>@<neon-host>/<db>?sslmode=require&pgbouncer=true&connect_timeout=15"
+```
 
----
+2. Install and generate client:
 
-### Why Blocks?
+```bash
+pnpm install
+```
 
-- **Branch Your Thinking:**  
-  Swipe or drag any block to the left to branch a new conversation—explore “what if” without losing
-  your place.
-- **Ingest New Context Instantly:**  
-  Drop in a block from another chat, your personal context library, or an external source. The LLM
-  can reason with it immediately.
-- **Remix and Merge:**  
-  Bring together blocks from different threads, merging insights or comparing alternatives. Remix
-  ideas with a drag-and-drop.
-- **Organize Visually:**  
-  Conversations become a canvas—a tree or graph—where context is clear and reusable.
+3. (Optional) Run migrations if you add/modify models:
 
----
+```bash
+pnpm prisma migrate dev
+```
 
-### Example Interactions
+4. Start the dev server:
 
-- **Swipe/Drag Left:**  
-  Instantly forks a block into a new branch—start a parallel thread of thought.
-- **Swipe/Drag Right:**  
-  Merge blocks or inject additional context from your saved collection.
-- **Long Press:**  
-  Mark a block as important, add it to your global context library, or export for reuse elsewhere.
-- **Tap to Expand:**  
-  View all sub-branches, see the “history of thought,” and jump between versions of a conversation.
+```bash
+pnpm dev
+```
+
+### Build
+
+```bash
+pnpm build && pnpm start
+```
 
 ---
 
-### UX Philosophy
+## Auth + Middleware
 
-- **Touch-first and Mouse-friendly:**  
-  Blocks are made for **swiping, dragging, and tapping**—not just clicking.
-- **Nonlinear Creativity:**  
-  Treat your AI conversations like a canvas or whiteboard.  
-  Branch, experiment, rewind, and remix—just like creative work in Figma or Miro.
-- **Reusable Knowledge:**  
-  Save blocks you love. Drop them into any chat, anytime.  
-  Over time, build a personal or team context library.
-- **Visual Clarity:**  
-  Every block shows its connections—branches, merges, origins.  
-  See not just _what_ you discussed, but _how_ you arrived there.
+- Public routes are allowlisted in `middleware.ts` (e.g., `/`, `/auth/...`).
+- All other routes are protected via Clerk; unauthenticated users are redirected to sign in.
 
 ---
 
-### Sample Workflow
+## Prisma
 
-1. **Chat as normal.**
-2. Get a new idea?  
-   **Swipe a message left**—branch off into a new exploration.
-3. Need more context?  
-   **Drag in** a block from a previous conversation or your context library.
-4. Want to compare?  
-   **Visualize multiple branches** side-by-side, and even merge insights.
+- Client is generated to `lib/generated/prisma` (see `prisma/schema.prisma`).
+- Access the client via `lib/db.ts`.
 
 ---
 
-> **GenAI Context Blocks Chat** makes AI conversation as powerful, flexible, and creative as modern
-> knowledge work.  
-> It’s not just chat—it’s a collaborative canvas for branching, remixing, and building with context.
+## Notes
 
----
-
-## How Blocks Work Technically
-
-- Each block is a node in a tree or graph structure, with parent(s), children, and connections.
-- Blocks can be stored, referenced, and reused globally.
-- All block operations—branching, merging, importing—are performed via intuitive UI gestures (swipe,
-  drag, drop).
-
----
-
-## Built for Extension
-
-- The “block” concept is extensible—future blocks can represent:
-  - File uploads, images, PDFs, audio, or code snippets
-  - LLM-powered summaries or workflows
-  - Integrations with other knowledge bases
-
----
-
-## Help Us Build the Next Level of Conversational AI
-
-This project is **open by design**—the “block” system is built to be forked, extended, and remixed
-by the community.  
-Have a block type, a UI pattern, or a feature in mind? [Open a discussion or PR!](./CONTRIBUTING.md)
-
----
+- This repository previously used Supabase for auth. It has been migrated to Clerk + Prisma + Neon.
+- See `docs/adr/0001-auth-stack-migration-clerk-prisma-neon.md` for details.

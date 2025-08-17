@@ -1,11 +1,22 @@
-export default function DashboardPage() {
+import { currentUser } from "@clerk/nextjs/server";
+
+import { ensureCurrentUserExists } from "@/lib/users/ensure-user";
+
+export default async function DashboardPage() {
+  const user = await currentUser();
+  if (user) {
+    await ensureCurrentUserExists();
+  }
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8">
-      <div className="text-center space-y-4">
-        <h1 className="text-2xl font-bold">Welcome to Context Blocks Chat</h1>
-        <p className="text-muted-foreground">
-          Your modular AI conversation platform is ready. Start building context
-          blocks!
+    <div className="flex-1 flex flex-col justify-center items-center max-w-4xl p-5">
+      <div className="text-center space-y-6">
+        <h1 className="text-4xl lg:text-6xl font-bold tracking-tight">
+          Dashboard
+        </h1>
+        <p className="text-xl lg:text-2xl text-muted-foreground max-w-2xl">
+          This is an authenticated route. You are:{" "}
+          {` ${user?.firstName} ${user?.lastName} ${user?.emailAddresses[0].emailAddress}`}
         </p>
       </div>
     </div>
