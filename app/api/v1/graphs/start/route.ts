@@ -1,5 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
-
+import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
 import {
   cacheIdempotentResponse,
@@ -8,24 +7,15 @@ import {
 import { StartGraphBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
-import { ensureCurrentUserExists } from "@/lib/users/ensure-user";
 
 export async function POST(req: Request) {
   try {
-    const { userId } = await auth();
-    if (!userId) return Errors.forbidden();
-
-    // Ensure DB user exists and get internal user id (cuid)
-    await ensureCurrentUserExists();
-    const owner = await prisma.user.findUnique({
-      where: { clerkUserId: userId },
-    });
-    if (!owner) {
-      return jsonError("INTERNAL", "Authenticated user record missing");
-    }
+    const ownerOrRes = await requireOwner();
+    if (ownerOrRes instanceof Response) return ownerOrRes;
+    const { owner } = ownerOrRes;
 
     // Idempotency replay
-    const cached = await getCachedIdempotentResponse(req, userId);
+    const cached = await getCachedIdempotentResponse(req, owner.id);
     if (cached) {
       return new Response(JSON.stringify(cached.body ?? {}), {
         status: cached.status,
@@ -94,7 +84,7 @@ export async function POST(req: Request) {
     // Cache idempotent result
     await cacheIdempotentResponse({
       req,
-      userId,
+      userId: owner.id,
       status: 200,
       headers: { "Content-Type": "application/json" },
       body: result,

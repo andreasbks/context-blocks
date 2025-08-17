@@ -1,14 +1,12 @@
-import { auth } from "@clerk/nextjs/server";
-
+import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: Request) {
   try {
-    const { userId: clerkUserId } = await auth();
-    if (!clerkUserId) return Errors.forbidden();
-    const owner = await prisma.user.findUnique({ where: { clerkUserId } });
-    if (!owner) return Errors.forbidden();
+    const ownerOrRes = await requireOwner();
+    if (ownerOrRes instanceof Response) return ownerOrRes;
+    const { owner } = ownerOrRes;
 
     const url = new URL(req.url);
     const limit = Math.min(

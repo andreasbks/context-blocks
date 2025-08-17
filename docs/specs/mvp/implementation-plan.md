@@ -64,12 +64,14 @@ Create a lightweight domain/service layer to keep handlers thin:
   - `sendStream({ branchId, expectedVersion, userId, userMessage, generation, forkFromNodeId, newBranchName, onUserItem, onDelta, onFinal })`
   - `inject({ branchId, blockId, reuseExistingNode, userId })`
   - `replaceTip({ branchId, newContent, expectedVersion, userId })`
-  - `fork({ branchId, fromNodeId, name, userId })`
   - `jump({ branchId, toNodeId, expectedVersion, userId })`
   - Linear/read helpers: `listGraphs`, `getGraphWithBranches`, `getLinear`, `getReferences`,
     `listBlocks`, `ensureBlock`
 
-Note: Prefer early guard clauses, CAS updates via `updateMany`, and only soft-deleting edges.
+Note: Prefer early guard clauses, CAS updates via `updateMany`, and only soft-deleting edges. All
+handlers must map Clerk → internal user id: call `ensureCurrentUserExists()` and then resolve
+`owner = prisma.user.findUnique({ where: { clerkUserId } })`; use `owner.id` for all DB writes and
+filters (never the Clerk id).
 
 ### 3) Routing and rewrites
 
@@ -120,6 +122,7 @@ Create route handlers under `app/api/v1/...`:
     - On hit: return stored HTTP response.
     - On miss: run handler logic; store response.
   - Cap stored body size; if exceeded, skip storing but still process.
+  - Utilities accept the standard `Request` type (App Router), not `NextRequest`.
 
 Install deps:
 
@@ -190,6 +193,8 @@ pnpm add zod
 - SSE endpoints (`generate:stream`, `send:stream`) emit required events and keepalive every 15s;
   `final` payload is cached for idempotency replays. Initial provider: OpenAI via a provider
   interface.
+- Every handler maps Clerk `userId` to the internal `User.id` and uses it consistently for ownership
+  checks and writes.
 
 ---
 
@@ -245,3 +250,21 @@ pnpm quality
 - `MessageContent` schema reserves `text` (<= 8000 chars), optional `annotations`, optional `meta`.
 
 These are reflected in endpoint behavior and DB/service design above.
+
+---
+
+## Implementation notes and pitfalls (from initial integration)
+
+- User identity: Clerk’s `userId` is not the same as Prisma `User.id`. Always call
+  `ensureCurrentUserExists()` and query `User` by `clerkUserId` to obtain the internal cuid. Use the
+  internal id for `Graph.userId`, `ContextBlock.userId`, and all queries.
+- Prisma JSON typing: when writing `ContextBlock.content`, cast to `Prisma.InputJsonValue` to
+  satisfy strict typings.
+- Idempotency helpers should work with the standard `Request` type (App Router). Avoid `NextRequest`
+  in shared libs to prevent type/lint issues.
+- Idempotency replay: return the stored body as-is to avoid narrowing `Prisma.JsonValue` unions by
+  property access.
+- Denormalized activity: update `Graph.lastActivityAt` inside the same write transaction; order
+  graph lists by `lastActivityAt desc`.
+- Local auth and cookies: prefer `http://localhost:3000` (not `127.0.0.1`) so Clerk’s `__session`
+  cookie is sent.

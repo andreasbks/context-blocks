@@ -27,3 +27,14 @@ export const StartGraphBody = z.object({
 });
 
 export type StartGraphInput = z.infer<typeof StartGraphBody>;
+
+export const AppendBody = z.object({
+  author: z.enum(["user", "assistant"]),
+  content: MessageContentSchema,
+  model: z.string().nullable().optional(),
+  expectedVersion: z.number().int().nonnegative().optional(),
+  forkFromNodeId: z.string().optional(),
+  newBranchName: z.string().max(120).optional(),
+});
+
+export type AppendInput = z.infer<typeof AppendBody>;
