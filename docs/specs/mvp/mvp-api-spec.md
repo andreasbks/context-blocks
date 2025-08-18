@@ -1,7 +1,7 @@
 # API Overview
 
 - **Style:** JSON REST + **SSE** for streaming
-- **Base URL:** `/v1`
+- **Base URL:** `/api/v1`
 - **Auth:** single-user MVP; every resource carries `userId`. Use bearer token or session cookie.
 - **Media types:**
   - Request: `Content-Type: application/json`
@@ -113,7 +113,7 @@
 
 ## Graphs
 
-### POST `/v1/graphs:start`
+### POST `/api/v1/graphs/start`
 
 Create a graph, its main branch, and the first message atomically.
 
@@ -164,7 +164,7 @@ Create a graph, its main branch, and the first message atomically.
 
 ---
 
-### GET `/v1/graphs`
+### GET `/api/v1/graphs`
 
 List graphs for current user.
 
@@ -184,7 +184,7 @@ List graphs for current user.
 
 ---
 
-### GET `/v1/graphs/{graphId}`
+### GET `/api/v1/graphs/{graphId}`
 
 Fetch one graph + its branches (minimal).
 
@@ -211,7 +211,7 @@ Fetch one graph + its branches (minimal).
 > `{root=forkFromNodeId, tip=forkFromNodeId, version=0}` and then performs the intent **on that new
 > branch**. Responses include a `branch` object when forking occurred.
 
-### 1) POST `/v1/branches/{branchId}:append`
+### 1) POST `/api/v1/branches/{branchId}/append`
 
 Persist a message (no generation).
 
@@ -274,7 +274,7 @@ Persist a message (no generation).
 
 ---
 
-### 2) POST `/v1/branches/{branchId}:generate:stream` (SSE)
+### 2) POST `/api/v1/branches/{branchId}/generate/stream` (SSE)
 
 Generate **assistant-only** at the current tip (or at a newly forked branch).
 
@@ -313,7 +313,7 @@ data: {
 
 ---
 
-### 3) POST `/v1/branches/{branchId}:send:stream` (SSE)
+### 3) POST `/api/v1/branches/{branchId}/send/stream` (SSE)
 
 Append **user** and then generate **assistant** in one gesture.
 
@@ -361,7 +361,7 @@ data: {
 
 ---
 
-### POST `/v1/branches/{branchId}:inject`
+### POST `/api/v1/branches/{branchId}/inject`
 
 Create (or reuse) a node for a user-owned block and add a `references` edge from the current tip.
 
@@ -382,7 +382,7 @@ Create (or reuse) a node for a user-owned block and add a `references` edge from
 
 ---
 
-### POST `/v1/branches/{branchId}:replaceTip`
+### POST `/api/v1/branches/{branchId}/replace-tip`
 
 Replace last message while preserving history.
 
@@ -413,7 +413,7 @@ Replace last message while preserving history.
 
 ---
 
-### POST `/v1/branches/{branchId}:jump`
+### POST `/api/v1/branches/{branchId}/jump`
 
 Move tip to a previous node on the branch path.
 
@@ -438,7 +438,7 @@ Move tip to a previous node on the branch path.
 
 ## Node Deletion
 
-### DELETE `/v1/nodes/{nodeId}`
+### DELETE `/api/v1/nodes/{nodeId}`
 
 **Semantics (MVP):**
 
@@ -493,7 +493,7 @@ Soft-delete the node (`hiddenAt=now()`), soft-delete **all** `references` touchi
 
 ## Reads
 
-### GET `/v1/branches/{branchId}:linear`
+### GET `/api/v1/branches/{branchId}/linear`
 
 Walk `follows` from root (or `cursorNodeId`) and return timeline items.
 
@@ -527,7 +527,7 @@ Walk `follows` from root (or `cursorNodeId`) and return timeline items.
 
 ---
 
-### GET `/v1/nodes/{nodeId}:references`
+### GET `/api/v1/nodes/{nodeId}/references`
 
 List `references` children for a node.
 
@@ -547,7 +547,7 @@ List `references` children for a node.
 
 ## Library
 
-### GET `/v1/blocks`
+### GET `/api/v1/blocks`
 
 List user’s blocks.
 
@@ -567,7 +567,7 @@ List user’s blocks.
 
 ---
 
-### POST `/v1/blocks:ensure`
+### POST `/api/v1/blocks/ensure`
 
 Idempotent add to library (upsert by checksum).
 
@@ -633,12 +633,12 @@ Idempotent add to library (upsert by checksum).
 
 # Streaming Contracts (SSE)
 
-### `/v1/branches/{id}:generate:stream`
+### `/api/v1/branches/{id}/generate/stream`
 
 - **Events:** `delta` (token), `final` (assistantItem, newTip, version[, branch]), `error`,
   `keepalive`
 
-### `/v1/branches/{id}:send:stream`
+### `/api/v1/branches/{id}/send/stream`
 
 - **Events:** `userItem` (persisted user message), `delta` (token), `final` (assistantItem, newTip,
   version[, branch]), `error`, `keepalive`
@@ -688,38 +688,38 @@ Idempotent add to library (upsert by checksum).
 
 1. **Start**
 
-   `POST /v1/graphs:start` → `{ graph, branch, items:[root] }`
+   `POST /api/v1/graphs/start` → `{ graph, branch, items:[root] }`
 
 2. **Send**
 
-   `POST /v1/branches/{br}:send:stream` → `userItem` … `final{assistantItem,newTip,version}`
+   `POST /api/v1/branches/{br}/send/stream` → `userItem` … `final{assistantItem,newTip,version}`
 
 3. **Inject**
 
-   `POST /v1/branches/{br}:inject` `{ blockId:"b_lib_7" }` → `{ reference }`
+   `POST /api/v1/branches/{br}/inject` `{ blockId:"b_lib_7" }` → `{ reference }`
 
 4. **ReplaceTip**
 
-   `POST /v1/branches/{br}:replaceTip` `{ newContent:{text:"Edited"}, expectedVersion }`
+   `POST /api/v1/branches/{br}/replace-tip` `{ newContent:{text:"Edited"}, expectedVersion }`
 
 5. **Generate** (assistant-only)
 
-   `POST /v1/branches/{br}:generate:stream` → `delta` … `final{assistantItem,...}`
+   `POST /api/v1/branches/{br}/generate/stream` → `delta` … `final{assistantItem,...}`
 
 ### Fork + instruction, then generate
 
 1. **Append w/ fork**
 
-   `POST /v1/branches/{br}:append`
+   `POST /api/v1/branches/{br}/append`
    `{ forkFromNodeId:"n_anchor", newBranchName:"explore-A", author:"user", content:{text:"Use 3 steps"} }`
 
    → `{ branch, item }`
 
 2. **Generate on new branch**
 
-   `POST /v1/branches/{branch.id}:generate:stream`
+   `POST /api/v1/branches/{branch.id}/generate/stream`
 
 ### Delete last node (tip moves back)
 
-- `DELETE /v1/nodes/{n_tip}` `{ "expectedVersions": { "br_main": 7 } }` →
+- `DELETE /api/v1/nodes/{n_tip}` `{ "expectedVersions": { "br_main": 7 } }` →
   `{ retargetedTips:[{branchId:"br_main", oldTip:"n_tip", newTip:"n_parent", version:8}] }`

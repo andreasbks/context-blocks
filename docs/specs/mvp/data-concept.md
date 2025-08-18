@@ -49,7 +49,7 @@
 
 **Conventions**
 
-- Base: `/v1`
+- Base: `/api/v1`
 - Auth: single-user, still gated by `userId` ownership on all resources.
 - **Idempotency:** `Idempotency-Key` header on all mutating routes (cached for 24h).
 - **Rate limits (MVP):** 60 writes/min; up to 8 concurrent SSE streams per user.
@@ -58,7 +58,7 @@
 
 ## Graph lifecycle
 
-### POST `/v1/graphs:start`
+### POST `/api/v1/graphs/start`
 
 Create a **graph** , its **main branch** , and the **first message** in a single call.
 
@@ -93,7 +93,7 @@ Create a **graph** , its **main branch** , and the **first message** in a single
 }
 ```
 
-### GET `/v1/graphs`
+### GET `/api/v1/graphs`
 
 List graphs (id, title, createdAt, lastActivity).
 
@@ -101,7 +101,7 @@ List graphs (id, title, createdAt, lastActivity).
 
 ## Linear chat intents (each supports optional forking)
 
-### POST `/v1/branches/{branchId}:append`
+### POST `/api/v1/branches/{branchId}/append`
 
 Append at the **current tip** (persist only). Optionally **fork first** by passing `forkFromNodeId`.
 
@@ -158,7 +158,7 @@ Append at the **current tip** (persist only). Optionally **fork first** by passi
 
 ---
 
-### POST `/v1/branches/{branchId}:generate:stream` _(SSE)_
+### POST `/api/v1/branches/{branchId}/generate/stream` _(SSE)_
 
 Generate **assistant-only** at the branch tip (or on a newly forked branch).
 
@@ -191,7 +191,7 @@ data: {
 
 ---
 
-### POST `/v1/branches/{branchId}:send:stream` _(SSE)_
+### POST `/api/v1/branches/{branchId}/send/stream` _(SSE)_
 
 Append **user** and then generate **assistant** in one gesture. Optionally **fork first** .
 
@@ -231,7 +231,7 @@ data: {
 
 ---
 
-### POST `/v1/branches/{branchId}:inject`
+### POST `/api/v1/branches/{branchId}/inject`
 
 Inject a **library/user-owned block** as a reference from the current tip.
 
@@ -252,7 +252,7 @@ Inject a **library/user-owned block** as a reference from the current tip.
 
 ---
 
-### POST `/v1/branches/{branchId}:replaceTip`
+### POST `/api/v1/branches/{branchId}/replace-tip`
 
 Edit/regenerate the **last** message, preserving history.
 
@@ -277,7 +277,7 @@ Edit/regenerate the **last** message, preserving history.
 
 ---
 
-### POST `/v1/branches/{branchId}:jump`
+### POST `/api/v1/branches/{branchId}/jump`
 
 Move the tip back to continue from a previous node.
 
@@ -289,7 +289,7 @@ Move the tip back to continue from a previous node.
 
 ---
 
-### DELETE `/v1/nodes/{nodeId}`
+### DELETE `/api/v1/nodes/{nodeId}`
 
 Soft-delete a node; safely retarget branch tips; remove touching `references` (default).
 
@@ -333,7 +333,7 @@ Soft-delete a node; safely retarget branch tips; remove touching `references` (d
 
 ## Reads for the linear UI
 
-### GET `/v1/branches/{branchId}:linear?cursorNodeId=&limit=50&include=references`
+### GET `/api/v1/branches/{branchId}/linear?cursorNodeId=&limit=50&include=references`
 
 Returns items by traversing `follows` from root (or cursor), ordered by `ord`.
 
@@ -355,17 +355,17 @@ Returns items by traversing `follows` from root (or cursor), ordered by `ord`.
 
 ```
 
-### GET `/v1/nodes/{nodeId}:references?limit=20&cursor=…`
+### GET `/api/v1/nodes/{nodeId}/references?limit=20&cursor=…`
 
 ---
 
 ## Library
 
-### GET `/v1/blocks?public=true`
+### GET `/api/v1/blocks?public=true`
 
 List your reusable blocks (user’s library).
 
-### POST `/v1/blocks:ensure`
+### POST `/api/v1/blocks/ensure`
 
 Upsert a block into your library by checksum (optional for MVP).
 

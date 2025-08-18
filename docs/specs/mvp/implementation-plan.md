@@ -17,14 +17,16 @@ Next.js + Clerk + Prisma + Neon stack.
 
 1. Database schema upgrade (Graph, ContextBlock, GraphNode, BlockEdge, Branch, enums, Idempotency)
 2. Core service layer and guards (transactions, invariants, reachability checks)
-3. API routing and URL rewrites (colon-style RPC actions → clean filesystem paths)
+3. API routing (public API lives under `/api/v1/*`, no rewrites)
 4. Validation, error envelope, and idempotency middleware
-5. Implement intent endpoints (with optional in-call forking): `graphs:start`, `branches:append`,
-   `branches:generate:stream`, `branches:send:stream`, `inject`, `replaceTip`, `jump`,
-   `nodes:delete`
-6. Read endpoints: `GET /v1/graphs`, `GET /v1/graphs/{graphId}`,
-   `GET /v1/branches/{branchId}:linear`, `GET /v1/nodes/{nodeId}:references`
-7. Library endpoints: `GET /v1/blocks`, `POST /v1/blocks:ensure`
+5. Implement intent endpoints (with optional in-call forking): `POST /api/v1/graphs/start`,
+   `POST /api/v1/branches/{id}/append`, `POST /api/v1/branches/{id}/generate/stream`,
+   `POST /api/v1/branches/{id}/send/stream`, `POST /api/v1/branches/{id}/inject`,
+   `POST /api/v1/branches/{id}/replace-tip`, `POST /api/v1/branches/{id}/jump`,
+   `DELETE /api/v1/nodes/{id}`
+6. Read endpoints: `GET /api/v1/graphs`, `GET /api/v1/graphs/{graphId}`,
+   `GET /api/v1/branches/{branchId}/linear`, `GET /api/v1/nodes/{nodeId}/references`
+7. Library endpoints: `GET /api/v1/blocks`, `POST /api/v1/blocks/ensure`
 8. Observability and rate limits (basic), logging, and keepalive for SSE
 9. Tests (unit for services + light integration for routes) and examples (curl)
 
@@ -75,28 +77,9 @@ handlers must map Clerk → internal user id: call `ensureCurrentUserExists()` a
 `owner = prisma.user.findUnique({ where: { clerkUserId } })`; use `owner.id` for all DB writes and
 filters (never the Clerk id).
 
-### 3) Routing and rewrites
+### 3) Routing
 
-Implement clean filesystem paths and map the spec’s colon-style endpoints via rewrites in
-`next.config.ts`:
-
-- Add `async rewrites()` returning:
-  - `/v1/graphs:start` → `/api/v1/graphs/start`
-  - `/v1/graphs` → `/api/v1/graphs`
-  - `/v1/graphs/:graphId` → `/api/v1/graphs/:graphId`
-  - `/v1/branches/:branchId:append` → `/api/v1/branches/:branchId/append`
-  - `/v1/branches/:branchId:generate:stream` → `/api/v1/branches/:branchId/generate/stream`
-  - `/v1/branches/:branchId:send:stream` → `/api/v1/branches/:branchId/send/stream`
-  - `/v1/branches/:branchId:inject` → `/api/v1/branches/:branchId/inject`
-  - `/v1/branches/:branchId:replaceTip` → `/api/v1/branches/:branchId/replace-tip`
-  - `/v1/nodes/:nodeId` (DELETE) → `/api/v1/nodes/:nodeId`
-  - `/v1/branches/:branchId:jump` → `/api/v1/branches/:branchId/jump`
-  - `/v1/branches/:branchId:linear` → `/api/v1/branches/:branchId/linear`
-  - `/v1/nodes/:nodeId:references` → `/api/v1/nodes/:nodeId/references`
-  - `/v1/blocks` → `/api/v1/blocks`
-  - `/v1/blocks:ensure` → `/api/v1/blocks/ensure`
-
-Create route handlers under `app/api/v1/...`:
+Public API lives directly under `/api/v1/*`. Create route handlers under `app/api/v1/...`:
 
 - `app/api/v1/graphs/start/route.ts` (POST)
 - `app/api/v1/graphs/route.ts` (GET list)
@@ -154,16 +137,17 @@ pnpm add zod
 
 ### 7) Read endpoints
 
-- `GET /v1/graphs` – list by `createdAt` desc with denormalized `lastActivityAt`.
-- `GET /v1/graphs/{graphId}` – minimal graph and branch list.
-- `GET /v1/branches/{branchId}:linear` – walk `follows` from root or `cursorNodeId`, filter out
+- `GET /api/v1/graphs` – list by `createdAt` desc with denormalized `lastActivityAt`.
+- `GET /api/v1/graphs/{graphId}` – minimal graph and branch list.
+- `GET /api/v1/branches/{branchId}/linear` – walk `follows` from root or `cursorNodeId`, filter out
   hidden/deleted, return `{ items, nextCursor }`.
-- `GET /v1/nodes/{nodeId}:references` – list `references` edges from the node with pagination.
+- `GET /api/v1/nodes/{nodeId}/references` – list `references` edges from the node with pagination.
 
 ### 8) Library endpoints
 
-- `GET /v1/blocks` – default `public=true` to act as library; support pagination and simple filters.
-- `POST /v1/blocks:ensure` – upsert by checksum; if missing `checksum`, fallback to create (MVP
+- `GET /api/v1/blocks` – default `public=true` to act as library; support pagination and simple
+  filters.
+- `POST /api/v1/blocks:ensure` – upsert by checksum; if missing `checksum`, fallback to create (MVP
   acceptable).
 
 ### 9) Observability and rate limiting
@@ -202,10 +186,10 @@ pnpm add zod
 
 ## Work breakdown checklist
 
-- [ ] Update Prisma schema with models/enums + `IdempotencyRequest`
-- [ ] Migrate and regenerate client
-- [ ] Add `lib/api/{errors,validation,idempotency,guards,transactions}.ts`
-- [ ] Add Next.js `rewrites()` in `next.config.ts`
+- [x] Update Prisma schema with models/enums + `IdempotencyRequest`
+- [x] Migrate and regenerate client
+- [x] Add `lib/api/{errors,validation,idempotency,guards,transactions}.ts`
+- [x] Ensure no rewrites are used; public API is under `/api/v1/*`
 - [ ] Implement routes under `app/api/v1/...`
 - [ ] Add SSE helper and implement `append/stream`
 - [ ] Add simple rate limit (MVP) and request size guards
