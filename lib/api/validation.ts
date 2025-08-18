@@ -52,3 +52,48 @@ export const ReplaceTipBody = z.object({
 });
 
 export type ReplaceTipInput = z.infer<typeof ReplaceTipBody>;
+
+export const GenerateStreamBody = z.object({
+  expectedVersion: z.number().int().nonnegative().optional(),
+  forkFromNodeId: z.string().nullable().optional(),
+  newBranchName: z.string().max(120).optional(),
+  generation: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type GenerateStreamInput = z.infer<typeof GenerateStreamBody>;
+
+export const SendStreamBody = z.object({
+  userMessage: MessageContentSchema,
+  expectedVersion: z.number().int().nonnegative().optional(),
+  forkFromNodeId: z.string().nullable().optional(),
+  newBranchName: z.string().max(120).optional(),
+  generation: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type SendStreamInput = z.infer<typeof SendStreamBody>;
+
+export const JumpBody = z.object({
+  toNodeId: z.string(),
+  expectedVersion: z.number().int().nonnegative().optional(),
+});
+
+export type JumpInput = z.infer<typeof JumpBody>;
+
+export const DeleteNodeBody = z.object({
+  removeReferences: z.boolean().optional(),
+  expectedVersions: z
+    .record(z.string(), z.number().int().nonnegative())
+    .optional(),
+});
+
+export type DeleteNodeInput = z.infer<typeof DeleteNodeBody>;
+
+export const EnsureBlockBody = z.object({
+  kind: z.enum(["user", "assistant"]),
+  content: MessageContentSchema,
+  checksum: z.string().max(256).optional(),
+  public: z.boolean().optional(),
+  model: z.string().nullable().optional(),
+});
+
+export type EnsureBlockInput = z.infer<typeof EnsureBlockBody>;
