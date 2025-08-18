@@ -4,6 +4,7 @@ import {
   cacheIdempotentResponse,
   getCachedIdempotentResponse,
 } from "@/lib/api/idempotency";
+import { acquireSSESlot, checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { GenerateStreamBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
@@ -27,6 +28,17 @@ export async function POST(
     const { owner } = ownerOrRes;
 
     const { branchId } = await params;
+    const rl = checkWriteRateLimit(
+      owner.id,
+      "POST /v1/branches/:id/generate/stream"
+    );
+    if (rl) return rl;
+    const slotOrRes = acquireSSESlot(
+      owner.id,
+      "POST /v1/branches/:id/generate/stream"
+    );
+    if (slotOrRes instanceof Response) return slotOrRes;
+    const slot = slotOrRes;
 
     // Check idempotency replay for SSE: if final cached, emit final and close
     const cached = await getCachedIdempotentResponse(req, owner.id);
@@ -43,6 +55,7 @@ export async function POST(
       queueMicrotask(async () => {
         await writeEvent(writer, "final", cached.body ?? {});
         await writer.close();
+        slot.release();
       });
       return new Response(readable, { status: cached.status, headers });
     }
@@ -60,6 +73,7 @@ export async function POST(
           },
         });
         await writer.close();
+        slot.release();
       });
       return new Response(readable, { headers });
     }
@@ -203,6 +217,7 @@ export async function POST(
     queueMicrotask(async () => {
       await writeEvent(writer, "final", finalPayload);
       await writer.close();
+      slot.release();
     });
 
     // Cache final for idempotency
@@ -215,7 +230,10 @@ export async function POST(
     });
 
     // Ensure keepalive cleared when stream closes
-    void writer.closed.then(() => clearInterval(keepalive));
+    void writer.closed.then(() => {
+      clearInterval(keepalive);
+      slot.release();
+    });
     setTimeout(() => clearInterval(keepalive), 60_000);
 
     return new Response(readable, { headers });

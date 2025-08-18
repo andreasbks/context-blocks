@@ -1,5 +1,6 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
+import { checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { ReplaceTipBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
@@ -12,6 +13,12 @@ export async function POST(
     const ownerOrRes = await requireOwner();
     if (ownerOrRes instanceof Response) return ownerOrRes;
     const { owner } = ownerOrRes;
+
+    const rl = checkWriteRateLimit(
+      owner.id,
+      "POST /v1/branches/:id/replace-tip"
+    );
+    if (rl) return rl;
 
     const { branchId } = await params;
     const body = await req.json().catch(() => null);

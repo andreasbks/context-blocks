@@ -1,5 +1,6 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
+import { checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { DeleteNodeBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 
@@ -13,6 +14,8 @@ export async function DELETE(
     const { owner } = ownerOrRes;
 
     const { nodeId } = await params;
+    const rl = checkWriteRateLimit(owner.id, "DELETE /v1/nodes/:id");
+    if (rl) return rl;
     const json = await req.json().catch(() => ({}));
     const parsed = DeleteNodeBody.safeParse(json);
     if (!parsed.success)

@@ -4,6 +4,7 @@ import {
   cacheIdempotentResponse,
   getCachedIdempotentResponse,
 } from "@/lib/api/idempotency";
+import { checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { AppendBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
@@ -16,6 +17,9 @@ export async function POST(
     const ownerOrRes = await requireOwner();
     if (ownerOrRes instanceof Response) return ownerOrRes;
     const { owner } = ownerOrRes;
+
+    const rl = checkWriteRateLimit(owner.id, "POST /v1/branches/:id/append");
+    if (rl) return rl;
 
     // Idempotency replay
     const cached = await getCachedIdempotentResponse(req, owner.id);

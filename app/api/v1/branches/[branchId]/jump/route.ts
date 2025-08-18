@@ -1,5 +1,6 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
+import { checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { JumpBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 
@@ -13,6 +14,8 @@ export async function POST(
     const { owner } = ownerOrRes;
 
     const { branchId } = await params;
+    const rl = checkWriteRateLimit(owner.id, "POST /v1/branches/:id/jump");
+    if (rl) return rl;
     const body = await req.json().catch(() => null);
     const parsed = JumpBody.safeParse(body);
     if (!parsed.success)

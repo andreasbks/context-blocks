@@ -4,6 +4,7 @@ import {
   cacheIdempotentResponse,
   getCachedIdempotentResponse,
 } from "@/lib/api/idempotency";
+import { acquireSSESlot, checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { SendStreamBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
@@ -26,6 +27,8 @@ export async function POST(
   const { owner } = ownerOrRes;
 
   const { branchId } = await params;
+  const rl = checkWriteRateLimit(owner.id, "POST /v1/branches/:id/send/stream");
+  if (rl) return rl;
 
   // SSE setup
   const { readable, writable } = new TransformStream();
@@ -36,12 +39,20 @@ export async function POST(
     Connection: "keep-alive",
   } as Record<string, string>;
 
+  const slotOrRes = acquireSSESlot(
+    owner.id,
+    "POST /v1/branches/:id/send/stream"
+  );
+  if (slotOrRes instanceof Response) return slotOrRes;
+  const slot = slotOrRes;
+
   // Idempotency final replay
   const cached = await getCachedIdempotentResponse(req, owner.id);
   if (cached) {
     queueMicrotask(async () => {
       await writeEvent(writer, "final", cached.body ?? {});
       await writer.close();
+      slot.release();
     });
     return new Response(readable, { status: cached.status, headers });
   }
@@ -59,6 +70,7 @@ export async function POST(
       });
       await writer.close();
     });
+    slot.release();
     return new Response(readable, { headers });
   }
   const { userMessage, expectedVersion, forkFromNodeId, newBranchName } =
@@ -222,6 +234,7 @@ export async function POST(
     // Emit final
     await writeEvent(writer, "final", finalPayload);
     await writer.close();
+    slot.release();
 
     await cacheIdempotentResponse({
       req,
@@ -231,7 +244,10 @@ export async function POST(
       body: finalPayload,
     });
 
-    void writer.closed.then(() => clearInterval(keepalive));
+    void writer.closed.then(() => {
+      clearInterval(keepalive);
+      slot.release();
+    });
     setTimeout(() => clearInterval(keepalive), 60_000);
 
     return new Response(readable, { headers });
@@ -243,6 +259,7 @@ export async function POST(
       await writer.close();
     } catch {}
     clearInterval(keepalive);
+    slot.release();
     return new Response(readable, { headers });
   }
 }

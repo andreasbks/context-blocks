@@ -4,6 +4,7 @@ import {
   cacheIdempotentResponse,
   getCachedIdempotentResponse,
 } from "@/lib/api/idempotency";
+import { checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { EnsureBlockBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
@@ -13,6 +14,9 @@ export async function POST(req: Request) {
     const ownerOrRes = await requireOwner();
     if (ownerOrRes instanceof Response) return ownerOrRes;
     const { owner } = ownerOrRes;
+
+    const rl = checkWriteRateLimit(owner.id, "POST /v1/blocks/ensure");
+    if (rl) return rl;
 
     const cached = await getCachedIdempotentResponse(req, owner.id);
     if (cached) {
