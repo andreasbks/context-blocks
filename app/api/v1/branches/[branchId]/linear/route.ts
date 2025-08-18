@@ -1,5 +1,6 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
+import { createRequestLogger } from "@/lib/api/logger";
 import { prisma } from "@/lib/db";
 import type { ContextBlock } from "@/lib/generated/prisma";
 
@@ -13,6 +14,11 @@ export async function GET(
     const { owner } = ownerOrRes;
 
     const { branchId } = await params;
+    const { log, ctx } = createRequestLogger(req, {
+      route: "GET /v1/branches/:id/linear",
+      userId: owner.id,
+    });
+    log.info({ event: "request_start" });
     const url = new URL(req.url);
     const limit = Math.min(
       parseInt(url.searchParams.get("limit") || "50", 10),
@@ -83,10 +89,12 @@ export async function GET(
       })
     );
 
-    return new Response(
+    const res = new Response(
       JSON.stringify({ items: items.filter(Boolean), nextCursor }),
       { headers: { "Content-Type": "application/json" } }
     );
+    log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
+    return res;
   } catch (err) {
     console.error("GET /v1/branches/{branchId}:linear error", err);
     return jsonError("INTERNAL", "Internal server error");

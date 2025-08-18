@@ -46,7 +46,7 @@ export function acquireSSESlot(
   userId: string,
   _routeKey: string,
   maxConcurrent = 8
-): { release: () => void } | Response {
+): { release: () => void; current: number } | Response {
   const current = maps.sseCounts.get(userId) ?? 0;
   if (current >= maxConcurrent) {
     return Errors.rateLimited(15); // suggest short retry for SSE
@@ -60,5 +60,6 @@ export function acquireSSESlot(
       const cur = maps.sseCounts.get(userId) ?? 1;
       maps.sseCounts.set(userId, Math.max(0, cur - 1));
     },
+    current: current + 1,
   };
 }

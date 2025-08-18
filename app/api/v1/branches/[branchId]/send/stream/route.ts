@@ -4,6 +4,7 @@ import {
   cacheIdempotentResponse,
   getCachedIdempotentResponse,
 } from "@/lib/api/idempotency";
+import { createRequestLogger } from "@/lib/api/logger";
 import { acquireSSESlot, checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { SendStreamBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
@@ -46,6 +47,12 @@ export async function POST(
   if (slotOrRes instanceof Response) return slotOrRes;
   const slot = slotOrRes;
 
+  const { log, ctx } = createRequestLogger(req, {
+    route: "POST /v1/branches/:id/send/stream",
+    userId: owner.id,
+  });
+  log.info({ event: "request_start", concurrentStreamsNow: slot.current });
+
   // Idempotency final replay
   const cached = await getCachedIdempotentResponse(req, owner.id);
   if (cached) {
@@ -54,8 +61,10 @@ export async function POST(
       await writer.close();
       slot.release();
     });
+    log.info({ event: "idempotency_check", result: "hit" });
     return new Response(readable, { status: cached.status, headers });
   }
+  log.info({ event: "idempotency_check", result: "miss" });
 
   const json = await req.json().catch(() => null);
   const parsed = SendStreamBody.safeParse(json);
@@ -71,8 +80,10 @@ export async function POST(
       await writer.close();
     });
     slot.release();
+    log.info({ event: "validation_result", ok: false });
     return new Response(readable, { headers });
   }
+  log.info({ event: "validation_result", ok: true });
   const { userMessage, expectedVersion, forkFromNodeId, newBranchName } =
     parsed.data;
 
@@ -82,6 +93,7 @@ export async function POST(
 
   try {
     // 1) Optionally fork, 2) append user (emit userItem), 3) append assistant as stub and final
+    const txStart = Date.now();
     const { targetBranch, userNodeId, userBlock, casVersion } =
       await prisma.$transaction(async (tx) => {
         const baseBranch = await tx.branch.findUnique({
@@ -160,10 +172,16 @@ export async function POST(
 
         return { targetBranch, userNodeId: userNode.id, userBlock, casVersion };
       });
+    log.info({ event: "tx_end", ok: true, durationMs: Date.now() - txStart });
 
     await writeEvent(writer, "userItem", {
       nodeId: userNodeId,
       block: userBlock,
+    });
+    log.info({
+      event: "business_event",
+      kind: "graph_write",
+      details: { branchId: targetBranch.id, newNodeId: userNodeId },
     });
 
     // Simulate generation; in real impl, stream deltas then commit on final
@@ -235,6 +253,7 @@ export async function POST(
     await writeEvent(writer, "final", finalPayload);
     await writer.close();
     slot.release();
+    log.info({ event: "sse_final_emit" });
 
     await cacheIdempotentResponse({
       req,
@@ -260,6 +279,13 @@ export async function POST(
     } catch {}
     clearInterval(keepalive);
     slot.release();
-    return new Response(readable, { headers });
+    log.info({
+      event: "sse_close",
+      reason: "error",
+      durationMs: Date.now() - ctx.startedAt,
+    });
+    const res = new Response(readable, { headers });
+    log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
+    return res;
   }
 }

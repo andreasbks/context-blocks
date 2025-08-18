@@ -4,6 +4,7 @@ import {
   cacheIdempotentResponse,
   getCachedIdempotentResponse,
 } from "@/lib/api/idempotency";
+import { createRequestLogger } from "@/lib/api/logger";
 import { checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { StartGraphBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
@@ -16,24 +17,46 @@ export async function POST(req: Request) {
     const { owner } = ownerOrRes;
 
     const rl = checkWriteRateLimit(owner.id, "POST /v1/graphs/start");
-    if (rl) return rl;
+    if (rl) {
+      const { log } = createRequestLogger(req, {
+        route: "POST /v1/graphs/start",
+        userId: owner.id,
+      });
+      log.warn({
+        event: "rate_limit_reject",
+        limit: "writes_per_min",
+        max: 60,
+      });
+      return rl;
+    }
+
+    const { log, ctx } = createRequestLogger(req, {
+      route: "POST /v1/graphs/start",
+      userId: owner.id,
+    });
+    log.info({ event: "request_start" });
 
     // Idempotency replay
     const cached = await getCachedIdempotentResponse(req, owner.id);
     if (cached) {
+      log.info({ event: "idempotency_check", result: "hit" });
       return new Response(JSON.stringify(cached.body ?? {}), {
         status: cached.status,
         headers: { "Content-Type": "application/json" },
       });
     }
+    log.info({ event: "idempotency_check", result: "miss" });
 
     const json = await req.json().catch(() => null);
     const parsed = StartGraphBody.safeParse(json);
     if (!parsed.success) {
+      log.info({ event: "validation_result", ok: false });
       return Errors.validation("Invalid request body", parsed.error.flatten());
     }
+    log.info({ event: "validation_result", ok: true });
     const { title, firstMessage, branchName } = parsed.data;
 
+    const txStart = Date.now();
     const result = await prisma.$transaction(async (tx) => {
       const graph = await tx.graph.create({
         data: { userId: owner.id, title: title ?? null },
@@ -84,6 +107,7 @@ export async function POST(req: Request) {
         items: [{ nodeId: rootNode.id, block }],
       };
     });
+    log.info({ event: "tx_end", ok: true, durationMs: Date.now() - txStart });
 
     // Cache idempotent result
     await cacheIdempotentResponse({
@@ -94,10 +118,12 @@ export async function POST(req: Request) {
       body: result,
     });
 
-    return new Response(JSON.stringify(result), {
+    const res = new Response(JSON.stringify(result), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+    log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
+    return res;
   } catch (err) {
     console.error("/v1/graphs:start error", err);
     return jsonError("INTERNAL", "Internal server error");

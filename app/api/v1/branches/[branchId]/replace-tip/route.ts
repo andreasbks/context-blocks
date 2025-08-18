@@ -1,5 +1,6 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
+import { createRequestLogger } from "@/lib/api/logger";
 import { checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { ReplaceTipBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
@@ -18,15 +19,35 @@ export async function POST(
       owner.id,
       "POST /v1/branches/:id/replace-tip"
     );
-    if (rl) return rl;
+    if (rl) {
+      const { log } = createRequestLogger(req, {
+        route: "POST /v1/branches/:id/replace-tip",
+        userId: owner.id,
+      });
+      log.warn({
+        event: "rate_limit_reject",
+        limit: "writes_per_min",
+        max: 60,
+      });
+      return rl;
+    }
 
     const { branchId } = await params;
     const body = await req.json().catch(() => null);
     const parsed = ReplaceTipBody.safeParse(body);
-    if (!parsed.success)
+    const { log, ctx } = createRequestLogger(req, {
+      route: "POST /v1/branches/:id/replace-tip",
+      userId: owner.id,
+    });
+    log.info({ event: "request_start" });
+    if (!parsed.success) {
+      log.info({ event: "validation_result", ok: false });
       return Errors.validation("Invalid request body", parsed.error.flatten());
+    }
+    log.info({ event: "validation_result", ok: true });
     const { newContent, expectedVersion } = parsed.data;
 
+    const txStart = Date.now();
     const result = await prisma.$transaction(async (tx) => {
       const br = await tx.branch.findUnique({
         where: { id: branchId },
@@ -101,12 +122,15 @@ export async function POST(
         version: br.version + 1,
       };
     });
+    log.info({ event: "tx_end", ok: true, durationMs: Date.now() - txStart });
 
     if ("error" in result && result.error instanceof Response)
       return result.error;
-    return new Response(JSON.stringify(result), {
+    const res = new Response(JSON.stringify(result), {
       headers: { "Content-Type": "application/json" },
     });
+    log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
+    return res;
   } catch (err) {
     console.error("POST /v1/branches/{branchId}:replaceTip error", err);
     return jsonError("INTERNAL", "Internal server error");

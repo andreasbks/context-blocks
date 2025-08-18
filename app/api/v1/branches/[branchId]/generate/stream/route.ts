@@ -4,6 +4,7 @@ import {
   cacheIdempotentResponse,
   getCachedIdempotentResponse,
 } from "@/lib/api/idempotency";
+import { createRequestLogger } from "@/lib/api/logger";
 import { acquireSSESlot, checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { GenerateStreamBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
@@ -50,6 +51,12 @@ export async function POST(
       Connection: "keep-alive",
     } as Record<string, string>;
 
+    const { log, ctx } = createRequestLogger(req, {
+      route: "POST /v1/branches/:id/generate/stream",
+      userId: owner.id,
+    });
+    log.info({ event: "request_start", concurrentStreamsNow: slot.current });
+
     if (cached) {
       // immediate final replay
       queueMicrotask(async () => {
@@ -57,8 +64,10 @@ export async function POST(
         await writer.close();
         slot.release();
       });
+      log.info({ event: "idempotency_check", result: "hit" });
       return new Response(readable, { status: cached.status, headers });
     }
+    log.info({ event: "idempotency_check", result: "miss" });
 
     const json = await req.json().catch(() => null);
     const parsed = GenerateStreamBody.safeParse(json);
@@ -75,8 +84,10 @@ export async function POST(
         await writer.close();
         slot.release();
       });
+      log.info({ event: "validation_result", ok: false });
       return new Response(readable, { headers });
     }
+    log.info({ event: "validation_result", ok: true });
     const { expectedVersion, forkFromNodeId, newBranchName } = parsed.data;
 
     const keepalive = setInterval(() => {
@@ -85,6 +96,7 @@ export async function POST(
     }, 15000);
 
     // Perform final commit in one transaction (providerless MVP)
+    const txStart = Date.now();
     const finalPayload = await prisma.$transaction(async (tx) => {
       // Load base branch
       const baseBranch = await tx.branch.findUnique({
@@ -196,6 +208,7 @@ export async function POST(
         version: baseBranch.version + 1,
       };
     });
+    log.info({ event: "tx_end", ok: true, durationMs: Date.now() - txStart });
 
     if (
       (finalPayload as unknown as { error?: unknown }).error instanceof Response
@@ -219,6 +232,7 @@ export async function POST(
       await writer.close();
       slot.release();
     });
+    log.info({ event: "sse_final_emit" });
 
     // Cache final for idempotency
     await cacheIdempotentResponse({
@@ -233,10 +247,17 @@ export async function POST(
     void writer.closed.then(() => {
       clearInterval(keepalive);
       slot.release();
+      log.info({
+        event: "sse_close",
+        reason: "client_closed",
+        durationMs: Date.now() - ctx.startedAt,
+      });
     });
     setTimeout(() => clearInterval(keepalive), 60_000);
 
-    return new Response(readable, { headers });
+    const res = new Response(readable, { headers });
+    log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
+    return res;
   } catch (err) {
     console.error("POST /v1/branches/{branchId}:generate:stream error", err);
     const { readable, writable } = new TransformStream();

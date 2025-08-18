@@ -1,5 +1,6 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
+import { createRequestLogger } from "@/lib/api/logger";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: Request) {
@@ -9,6 +10,11 @@ export async function GET(req: Request) {
     const { owner } = ownerOrRes;
 
     const url = new URL(req.url);
+    const { log, ctx } = createRequestLogger(req, {
+      route: "GET /v1/graphs",
+      userId: owner.id,
+    });
+    log.info({ event: "request_start" });
     const limit = Math.min(
       parseInt(url.searchParams.get("limit") || "20", 10),
       100
@@ -29,9 +35,11 @@ export async function GET(req: Request) {
       nextCursor = next?.id ?? null;
     }
 
-    return new Response(JSON.stringify({ items, nextCursor }), {
+    const res = new Response(JSON.stringify({ items, nextCursor }), {
       headers: { "Content-Type": "application/json" },
     });
+    log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
+    return res;
   } catch (err) {
     console.error("GET /v1/graphs error", err);
     return Errors.notFound("Graphs");

@@ -1,5 +1,6 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
+import { createRequestLogger } from "@/lib/api/logger";
 import { checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { InjectBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
@@ -14,14 +15,32 @@ export async function POST(
     const { owner } = ownerOrRes;
 
     const rl = checkWriteRateLimit(owner.id, "POST /v1/branches/:id/inject");
-    if (rl) return rl;
+    if (rl) {
+      const { log } = createRequestLogger(req, {
+        route: "POST /v1/branches/:id/inject",
+        userId: owner.id,
+      });
+      log.warn({
+        event: "rate_limit_reject",
+        limit: "writes_per_min",
+        max: 60,
+      });
+      return rl;
+    }
 
     const { branchId } = await params;
     const body = await req.json().catch(() => null);
     const parsed = InjectBody.safeParse(body);
+    const { log, ctx } = createRequestLogger(req, {
+      route: "POST /v1/branches/:id/inject",
+      userId: owner.id,
+    });
+    log.info({ event: "request_start" });
     if (!parsed.success) {
+      log.info({ event: "validation_result", ok: false });
       return Errors.validation("Invalid request body", parsed.error.flatten());
     }
+    log.info({ event: "validation_result", ok: true });
     const { blockId, reuseExistingNode } = parsed.data;
 
     // Verify branch ownership
@@ -52,6 +71,7 @@ export async function POST(
     }
 
     // Insert references edge from current tip to node
+    const txStart = Date.now();
     const ref = await prisma.blockEdge.create({
       data: {
         graphId: branch.graphId,
@@ -64,13 +84,16 @@ export async function POST(
         childNode: { include: { block: true } },
       },
     });
+    log.info({ event: "tx_end", ok: true, durationMs: Date.now() - txStart });
 
-    return new Response(
+    const res = new Response(
       JSON.stringify({
         reference: { nodeId: ref.childNodeId, block: ref.childNode.block },
       }),
       { headers: { "Content-Type": "application/json" } }
     );
+    log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
+    return res;
   } catch (err) {
     console.error("POST /v1/branches/{branchId}:inject error", err);
     return jsonError("INTERNAL", "Internal server error");
