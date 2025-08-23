@@ -70,7 +70,7 @@ model GraphNode {
   hiddenAt DateTime?
 
   graph Graph        @relation(fields: [graphId], references: [id], onDelete: Cascade)
-  block ContextBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  block ContextBlock @relation(fields: [blockId], references: [id], onDelete: Restrict)
 
   parentEdges BlockEdge[] @relation("Parent")
   childEdges  BlockEdge[] @relation("Child")
