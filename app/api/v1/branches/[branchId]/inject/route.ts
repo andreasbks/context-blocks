@@ -95,7 +95,7 @@ export async function POST(
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("POST /v1/branches/{branchId}:inject error", err);
+    console.error("POST /v1/branches/{branchId}/inject error", err);
     return jsonError("INTERNAL", "Internal server error");
   }
 }

@@ -293,7 +293,7 @@ Generate **assistant-only** at the current tip (or at a newly forked branch).
 
 ```
 event: delta
-data: {"token":"Okay, let's..."}
+data: {"text":"Okay, let's..."}
 
 event: final
 data: {

@@ -1,3 +1,6 @@
+import OpenAI from "openai";
+
+import { buildSimpleContext } from "@/lib/ai/build-context";
 import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
 import {
@@ -19,10 +22,17 @@ function writeEvent(
   return writer.write(`event: ${event}\n` + `data: ${payload}\n\n`);
 }
 
+const openaiClient = new OpenAI({
+  apiKey: process.env["OPENAI_API_KEY"], // This is the default and can be omitted
+});
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ branchId: string }> }
 ) {
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+
   try {
     const ownerOrRes = await requireOwner();
     if (ownerOrRes instanceof Response) return ownerOrRes;
@@ -43,8 +53,6 @@ export async function POST(
 
     // Check idempotency replay for SSE: if final cached, emit final and close
     const cached = await getCachedIdempotentResponse(req, owner.id);
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
     const headers = {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -95,7 +103,27 @@ export async function POST(
       void writer.write(`event: keepalive\n` + `data: {}\n\n`);
     }, 15000);
 
-    // Perform final commit in one transaction (providerless MVP)
+    // Generate the assitant message, given the branch conversation context and stream intermediate events to the client, before continuing with the full assitant message
+    let finalAssistantText = "";
+
+    const input = await buildSimpleContext(branchId);
+
+    const stream = await openaiClient.responses.create({
+      model: "gpt-4o",
+      input,
+      stream: true,
+    });
+
+    for await (const event of stream) {
+      if (event.type === "response.output_text.delta") {
+        finalAssistantText += event.delta;
+        await writeEvent(writer, "delta", {
+          text: event.delta,
+        });
+      }
+    }
+
+    // Perform final commit in one transaction
     const txStart = Date.now();
     const finalPayload = await prisma.$transaction(async (tx) => {
       // Load base branch
@@ -145,12 +173,13 @@ export async function POST(
         };
       }
 
-      const assistantText = "Assistant response (provider not configured)";
       const block = await tx.contextBlock.create({
         data: {
           userId: owner.id,
           kind: "assistant",
-          content: { text: assistantText } as unknown as Prisma.InputJsonValue,
+          content: {
+            text: finalAssistantText,
+          } as unknown as Prisma.InputJsonValue,
           model: "stub",
           public: false,
         },
@@ -259,9 +288,7 @@ export async function POST(
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("POST /v1/branches/{branchId}:generate:stream error", err);
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
+    console.error("POST /v1/branches/{branchId}:generate/stream error", err);
     queueMicrotask(async () => {
       await writeEvent(writer, "error", {
         error: { code: "INTERNAL", message: "Internal server error" },
