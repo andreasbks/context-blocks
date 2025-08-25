@@ -9,11 +9,11 @@ export function createSSEContext(keepalive_interval: number = 15000) {
     "X-Accel-Buffering": "no",
   };
 
-  let cleanedUp = false;
+  let tearedDown = false;
   let keepalive: ReturnType<typeof setInterval> | undefined;
 
   async function writeEventSafe(event: string, data: unknown) {
-    if (cleanedUp) return;
+    if (tearedDown) return;
     try {
       const payload =
         typeof data === "string" ? data : JSON.stringify(data ?? {});
@@ -21,14 +21,14 @@ export function createSSEContext(keepalive_interval: number = 15000) {
     } catch {}
   }
 
-  function cleanup() {
-    if (cleanedUp) return;
-    cleanedUp = true;
+  function teardown() {
+    if (tearedDown) return;
+    tearedDown = true;
     if (keepalive) clearInterval(keepalive);
   }
 
   // auto-cleanup if client disconnects
-  void writer.closed.then(() => cleanup());
+  void writer.closed.then(() => teardown());
 
   const setKeepalive = () => {
     keepalive = setInterval(() => {
@@ -36,5 +36,5 @@ export function createSSEContext(keepalive_interval: number = 15000) {
     }, keepalive_interval);
   };
 
-  return { readable, writer, headers, writeEventSafe, cleanup, setKeepalive };
+  return { readable, writer, headers, writeEventSafe, teardown, setKeepalive };
 }

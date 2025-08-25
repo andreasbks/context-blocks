@@ -9,29 +9,41 @@ import {
 } from "@/lib/api/idempotency";
 import { createRequestLogger } from "@/lib/api/logger";
 import { acquireSSESlot, checkWriteRateLimit } from "@/lib/api/rate-limit";
+import { createSSEContext } from "@/lib/api/sse-context";
 import { GenerateStreamBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 
-function writeEvent(
-  writer: WritableStreamDefaultWriter,
-  event: string,
-  data: unknown
-) {
-  const payload = typeof data === "string" ? data : JSON.stringify(data);
-  return writer.write(`event: ${event}\n` + `data: ${payload}\n\n`);
-}
-
 const openaiClient = new OpenAI({
-  apiKey: process.env["OPENAI_API_KEY"], // This is the default and can be omitted
+  apiKey: process.env["OPENAI_API_KEY"],
 });
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ branchId: string }> }
 ) {
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
+  const requestedModel = process.env["OPENAI_MODEL"] ?? "gpt-5"; // TODO: Put defaults into a central config.
+  let effectiveModel = requestedModel;
+
+  const sse = createSSEContext();
+  const headers = sse.headers;
+
+  let closed = false;
+  let slot: { release: () => void; current: number } | undefined;
+
+  // TODO: Wire AbortController - best practice for conacelling upstream connection with OpenAI SDK currently unclear
+  const controller = new AbortController();
+
+  const cleanupOnce = () => {
+    if (closed) return;
+    closed = true;
+    if (slot) slot.release();
+    controller.abort();
+    sse.teardown();
+  };
+
+  // Safety net: if writer closes for any reason
+  void sse.writer.closed.finally(() => cleanupOnce());
 
   try {
     const ownerOrRes = await requireOwner();
@@ -39,6 +51,7 @@ export async function POST(
     const { owner } = ownerOrRes;
 
     const { branchId } = await params;
+
     const rl = checkWriteRateLimit(
       owner.id,
       "POST /v1/branches/:id/generate/stream"
@@ -49,15 +62,10 @@ export async function POST(
       "POST /v1/branches/:id/generate/stream"
     );
     if (slotOrRes instanceof Response) return slotOrRes;
-    const slot = slotOrRes;
+    slot = slotOrRes;
 
     // Check idempotency replay for SSE: if final cached, emit final and close
     const cached = await getCachedIdempotentResponse(req, owner.id);
-    const headers = {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    } as Record<string, string>;
 
     const { log, ctx } = createRequestLogger(req, {
       route: "POST /v1/branches/:id/generate/stream",
@@ -68,12 +76,12 @@ export async function POST(
     if (cached) {
       // immediate final replay
       queueMicrotask(async () => {
-        await writeEvent(writer, "final", cached.body ?? {});
-        await writer.close();
-        slot.release();
+        await sse.writeEventSafe("final", cached.body ?? {});
+        await sse.writer.close();
+        cleanupOnce();
       });
       log.info({ event: "idempotency_check", result: "hit" });
-      return new Response(readable, { status: cached.status, headers });
+      return new Response(sse.readable, { status: cached.status, headers });
     }
     log.info({ event: "idempotency_check", result: "miss" });
 
@@ -82,44 +90,72 @@ export async function POST(
     if (!parsed.success) {
       // emit error envelope over SSE
       queueMicrotask(async () => {
-        await writeEvent(writer, "error", {
+        await sse.writeEventSafe("error", {
           error: {
             code: "VALIDATION_FAILED",
             message: "Invalid request body",
             details: parsed.error.flatten(),
           },
         });
-        await writer.close();
-        slot.release();
+        await sse.writer.close();
+        cleanupOnce();
       });
       log.info({ event: "validation_result", ok: false });
-      return new Response(readable, { headers });
+      return new Response(sse.readable, { headers });
     }
     log.info({ event: "validation_result", ok: true });
     const { expectedVersion, forkFromNodeId, newBranchName } = parsed.data;
 
     const keepalive = setInterval(() => {
       // ignore failure of writes after close
-      void writer.write(`event: keepalive\n` + `data: {}\n\n`);
+      void sse.writeEventSafe("keepalive", {});
     }, 15000);
 
     // Generate the assitant message, given the branch conversation context and stream intermediate events to the client, before continuing with the full assitant message
-    let finalAssistantText = "";
+    let accumulatedResponse = "";
+    let finalAssistantResponse = "";
 
     const input = await buildSimpleContext(branchId);
 
     const stream = await openaiClient.responses.create({
-      model: "gpt-4o",
+      model: requestedModel,
       input,
       stream: true,
     });
 
     for await (const event of stream) {
-      if (event.type === "response.output_text.delta") {
-        finalAssistantText += event.delta;
-        await writeEvent(writer, "delta", {
-          text: event.delta,
-        });
+      switch (event.type) {
+        case "response.output_text.delta": {
+          const chunk = event.delta ?? "";
+          accumulatedResponse += chunk;
+          await sse.writeEventSafe("delta", { text: chunk });
+          break;
+        }
+
+        case "response.output_text.done": {
+          // Prefer the authoritative final text if provided,
+          // otherwise fall back to our accumulator.
+          finalAssistantResponse = event.text ?? accumulatedResponse;
+          break;
+        }
+
+        case "response.completed": {
+          // Record the actual model used (if the server echoes it)
+          if (event.response?.model) effectiveModel = event.response.model;
+          // Ensure finalAssistantText is set even if `.done` never arrived
+          if (!finalAssistantResponse)
+            finalAssistantResponse = accumulatedResponse;
+          break;
+        }
+
+        case "response.failed": {
+          // throw an error if the response failed. Error handling in the catch block.
+          throw new Error(event.response.error?.message ?? "upstream_error");
+        }
+
+        default:
+          // ignore other event types for now
+          break;
       }
     }
 
@@ -178,9 +214,9 @@ export async function POST(
           userId: owner.id,
           kind: "assistant",
           content: {
-            text: finalAssistantText,
+            text: finalAssistantResponse,
           } as unknown as Prisma.InputJsonValue,
-          model: "stub",
+          model: effectiveModel,
           public: false,
         },
       });
@@ -244,22 +280,22 @@ export async function POST(
     ) {
       clearInterval(keepalive);
       queueMicrotask(async () => {
-        await writeEvent(writer, "error", {
+        await sse.writeEventSafe("error", {
           error: {
             code: "CONFLICT_TIP_MOVED",
             message: "Branch tip has advanced",
           },
         });
-        await writer.close();
+        await sse.writer.close();
       });
-      return new Response(readable, { headers });
+      return new Response(sse.readable, { headers });
     }
 
     // Emit final and cache idempotent
     queueMicrotask(async () => {
-      await writeEvent(writer, "final", finalPayload);
-      await writer.close();
-      slot.release();
+      await sse.writeEventSafe("final", finalPayload);
+      await sse.writer.close();
+      cleanupOnce();
     });
     log.info({ event: "sse_final_emit" });
 
@@ -273,34 +309,27 @@ export async function POST(
     });
 
     // Ensure keepalive cleared when stream closes
-    void writer.closed.then(() => {
+    void sse.writer.closed.then(() => {
       clearInterval(keepalive);
-      slot.release();
+      cleanupOnce();
       log.info({
         event: "sse_close",
         reason: "client_closed",
         durationMs: Date.now() - ctx.startedAt,
       });
     });
-    setTimeout(() => clearInterval(keepalive), 60_000);
 
-    const res = new Response(readable, { headers });
+    const res = new Response(sse.readable, { headers });
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("POST /v1/branches/{branchId}:generate/stream error", err);
+    console.error("POST /v1/branches/{branchId}/generate/stream error", err);
     queueMicrotask(async () => {
-      await writeEvent(writer, "error", {
+      await sse.writeEventSafe("error", {
         error: { code: "INTERNAL", message: "Internal server error" },
       });
-      await writer.close();
+      await sse.writer.close();
     });
-    return new Response(readable, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
+    return new Response(sse.readable, { status: 500, headers });
   }
 }
