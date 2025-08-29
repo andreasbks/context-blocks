@@ -305,7 +305,7 @@ export async function POST(
           };
         });
         log.info({
-          event: "tx_end",
+          event: "tx_assistant_commit_end",
           ok: true,
           durationMs: Date.now() - txStart,
         });
