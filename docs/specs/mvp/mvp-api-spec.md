@@ -289,15 +289,19 @@ Generate **assistant-only** at the current tip (or at a newly forked branch).
 }
 ```
 
-**SSE**
+**SSE (unified streaming contract)**
 
 ```
 event: delta
 data: {"text":"Okay, let's..."}
 
+// Optional: if the assistant item is persisted only at the end, no 'item' will be sent mid-stream
+// Final payload always uses a unified envelope
 event: final
 data: {
-  "assistantItem": { "nodeId":"n_asst","block":{ "id":"b_asst","kind":"assistant","content":{"text":"…"},"model":"gpt-4o-mini" } },
+  "items": [
+    { "role": "assistant", "item": { "nodeId":"n_asst", "block": { "id":"b_asst","kind":"assistant","content":{"text":"…"},"model":"gpt-4" } } }
+  ],
   "newTip": "n_asst",
   "version": 9,
   "branch": { "id":"br_new", "...": "..." }          // only when forked
@@ -329,18 +333,23 @@ Append **user** and then generate **assistant** in one gesture.
 }
 ```
 
-**SSE**
+**SSE (unified streaming contract)**
 
 ```
-event: userItem
-data: { "nodeId":"n_user","block":{ "id":"b_user","kind":"user","content":{"text":"Try path A"} } }
+// Persisted user message
+event: item
+data: { "role": "user", "item": { "nodeId":"n_user","block":{ "id":"b_user","kind":"user","content":{"text":"Try path A"} } } }
 
 event: delta
-data: {"token":"Here's an approach..."}
+data: {"text":"Here's an approach..."}
 
+// Final payload always includes both user and assistant items in an array
 event: final
 data: {
-  "assistantItem": { "nodeId":"n_asst","block":{ "id":"b_asst","kind":"assistant","content":{"text":"…"} } },
+  "items": [
+    { "role": "user", "item": { "nodeId":"n_user", "block": { "id":"b_user","kind":"user","content":{"text":"Try path A"} } } },
+    { "role": "assistant", "item": { "nodeId":"n_asst", "block": { "id":"b_asst","kind":"assistant","content":{"text":"…"},"model":"gpt-4" } } }
+  ],
   "newTip":"n_asst",
   "version": 9,
   "branch": { "id":"br_new", "...":"..." }           // only when forked
@@ -633,15 +642,17 @@ Idempotent add to library (upsert by checksum).
 
 # Streaming Contracts (SSE)
 
-### `/api/v1/branches/{id}/generate/stream`
+Unified across endpoints:
 
-- **Events:** `delta` (token), `final` (assistantItem, newTip, version[, branch]), `error`,
-  `keepalive`
-
-### `/api/v1/branches/{id}/send/stream`
-
-- **Events:** `userItem` (persisted user message), `delta` (token), `final` (assistantItem, newTip,
-  version[, branch]), `error`, `keepalive`
+- **Events:**
+  - `keepalive` – heartbeat every ~15s
+  - `item` – persisted timeline item; payload `{ role:"user|assistant", item:{ nodeId, block } }`
+  - `delta` – assistant token chunk; payload `{ text }`
+  - `final` – completion envelope with unified shape:
+    ```json
+    { "items": [ {"role":"user","item":{...}}, {"role":"assistant","item":{...}} ], "newTip":"nodeId", "version": 42, "branch": { /* when forked */ } }
+    ```
+  - `error` – error envelope
 
 **Headers:** `Accept: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`
 

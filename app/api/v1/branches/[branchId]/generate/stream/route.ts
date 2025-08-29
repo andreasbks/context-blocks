@@ -191,7 +191,7 @@ export async function POST(
 
         // Final commit transaction
         const txStart = Date.now();
-        const finalPayload = await prisma.$transaction(async (tx) => {
+        const commitResult = await prisma.$transaction(async (tx) => {
           const baseBranch = await tx.branch.findUnique({
             where: { id: branchId },
             include: { graph: true },
@@ -286,7 +286,8 @@ export async function POST(
 
           if (forkFromNodeId) {
             return {
-              assistantItem: { nodeId: node.id, block },
+              nodeId: node.id,
+              block,
               branch: {
                 id: targetBranch.id,
                 graphId: targetBranch.graphId,
@@ -299,7 +300,8 @@ export async function POST(
           }
 
           return {
-            assistantItem: { nodeId: node.id, block },
+            nodeId: node.id,
+            block,
             newTip: node.id,
             version: baseBranch.version + 1,
           };
@@ -311,7 +313,7 @@ export async function POST(
         });
 
         if (
-          (finalPayload as unknown as { error?: unknown }).error instanceof
+          (commitResult as unknown as { error?: unknown }).error instanceof
           Response
         ) {
           clearInterval(keepalive);
@@ -325,7 +327,21 @@ export async function POST(
           return;
         }
 
-        await sse.writeEventSafe("final", finalPayload);
+        // Unified final envelope: items array (assistant-only for generate)
+        const { nodeId, block, ...rest } = commitResult as unknown as {
+          nodeId: string;
+          block: unknown;
+        } & Record<string, unknown>;
+        const finalUnified = {
+          items: [
+            {
+              role: "assistant" as const,
+              item: { nodeId, block },
+            },
+          ],
+          ...rest,
+        };
+        await sse.writeEventSafe("final", finalUnified);
         log.info({
           event: "sse_final_emit",
           durationMs: Date.now() - ctx.startedAt,
@@ -338,7 +354,7 @@ export async function POST(
           userId: owner.id,
           status: 200,
           headers: { "Content-Type": "application/json" },
-          body: finalPayload,
+          body: finalUnified,
         });
       } catch (err) {
         console.error(
