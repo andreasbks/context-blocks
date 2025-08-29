@@ -16,4 +16,118 @@ model User {
   lastName    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Relations
+  graphs        Graph[]
+  contextBlocks ContextBlock[]
+}
+
+enum BlockKind {
+  user
+  assistant
+}
+
+enum RelationType {
+  follows
+  references
+}
+
+model Graph {
+  id             String   @id @default(cuid())
+  userId         String
+  title          String?
+  createdAt      DateTime @default(now())
+  lastActivityAt DateTime @default(now())
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodes    GraphNode[]
+  edges    BlockEdge[]
+  branches Branch[]
+
+  @@index([userId])
+  @@index([lastActivityAt])
+}
+
+model ContextBlock {
+  id         String     @id @default(cuid())
+  userId     String
+  kind       BlockKind
+  content    Json
+  model      String?
+  tokenCount Int?
+  checksum   String?    @unique
+  public     Boolean    @default(false)
+  createdAt  DateTime   @default(now())
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodes GraphNode[]
+}
+
+model GraphNode {
+  id       String   @id @default(cuid())
+  graphId  String
+  blockId  String
+  hiddenAt DateTime?
+
+  graph Graph        @relation(fields: [graphId], references: [id], onDelete: Cascade)
+  block ContextBlock @relation(fields: [blockId], references: [id], onDelete: Restrict)
+
+  parentEdges BlockEdge[] @relation("Parent")
+  childEdges  BlockEdge[] @relation("Child")
+
+  // Back-relations for Branch root/tip pointers
+  branchesAsRoot Branch[] @relation("BranchRoot")
+  branchesAsTip  Branch[] @relation("BranchTip")
+
+  @@index([graphId, blockId])
+}
+
+model BlockEdge {
+  id           String       @id @default(cuid())
+  graphId      String
+  parentNodeId String
+  childNodeId  String
+  relation     RelationType
+  ord          Int?
+  createdAt    DateTime     @default(now())
+  deletedAt    DateTime?
+
+  graph      Graph     @relation(fields: [graphId], references: [id], onDelete: Cascade)
+  parentNode GraphNode @relation("Parent", fields: [parentNodeId], references: [id], onDelete: Cascade)
+  childNode  GraphNode @relation("Child",  fields: [childNodeId],  references: [id], onDelete: Cascade)
+
+  @@index([graphId, parentNodeId, relation, ord])
+  @@index([graphId, childNodeId])
+}
+
+model Branch {
+  id         String    @id @default(cuid())
+  graphId    String
+  name       String
+  rootNodeId String
+  tipNodeId  String?
+  version    Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  graph   Graph     @relation(fields: [graphId], references: [id], onDelete: Cascade)
+  rootNode GraphNode @relation("BranchRoot", fields: [rootNodeId], references: [id], onDelete: Restrict)
+  tipNode  GraphNode? @relation("BranchTip", fields: [tipNodeId], references: [id], onDelete: SetNull)
+
+  @@index([graphId])
+  @@unique([graphId, name])
+}
+
+model IdempotencyRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  method    String
+  path      String
+  key       String
+  status    Int
+  headers   Json?
+  body      Json?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, method, path, key])
+  @@index([createdAt])
 }
