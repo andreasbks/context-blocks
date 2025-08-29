@@ -21,6 +21,21 @@ const openaiClient = new OpenAI({
   apiKey: process.env["OPENAI_API_KEY"],
 });
 
+/**
+ * Streamed generation SSE endpoint
+ * Flow:
+ * 1) Authenticate and read params
+ * 2) Rate-limit check and acquire SSE slot (concurrency control)
+ * 3) Idempotency replay: if a final exists for this key, stream it and exit
+ * 4) Validate request body and report validation errors over SSE
+ * 5) Start keepalive heartbeats to keep the stream open
+ * 6) Start a background worker that:
+ *    - builds conversation context
+ *    - calls OpenAI with streaming and emits "delta" chunks
+ *    - commits assistant block and branch tip in one TX
+ *    - emits "final" and closes the stream
+ * 7) Immediately return the SSE Response so the client can receive events
+ */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ branchId: string }> }
@@ -29,13 +44,14 @@ export async function POST(
   let effectiveModel = requestedModel;
   let effectiveTokenCount: null | number = null;
 
+  // Initialize SSE transport (headers + readable + writer) for event emission
   const sse = createSSEContext();
   const headers = sse.headers;
 
   let closed = false;
   let slot: { release: () => void; current: number } | undefined;
 
-  // TODO: Wire AbortController - best practice for conacelling upstream connection with OpenAI SDK currently unclear
+  // Abort controller placeholder for potential upstream cancellation
   const controller = new AbortController();
 
   const cleanupOnce = () => {
