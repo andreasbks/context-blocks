@@ -14,6 +14,9 @@ import { GenerateStreamBody } from "@/lib/api/validation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic"; // avoids any caching of the SSE route
+
 const openaiClient = new OpenAI({
   apiKey: process.env["OPENAI_API_KEY"],
 });
@@ -22,8 +25,9 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ branchId: string }> }
 ) {
-  const requestedModel = process.env["OPENAI_MODEL"] ?? "gpt-5"; // TODO: Put defaults into a central config.
+  const requestedModel = process.env["OPENAI_MODEL"] ?? "gpt-4"; // TODO: Put defaults into a central config.
   let effectiveModel = requestedModel;
+  let effectiveTokenCount: null | number = null;
 
   const sse = createSSEContext();
   const headers = sse.headers;
@@ -111,216 +115,242 @@ export async function POST(
       void sse.writeEventSafe("keepalive", {});
     }, 15000);
 
-    // Generate the assitant message, given the branch conversation context and stream intermediate events to the client, before continuing with the full assitant message
-    let accumulatedResponse = "";
-    let finalAssistantResponse = "";
+    // Start work in background so events can flush immediately
+    void (async () => {
+      try {
+        // Generate assistant message while streaming deltas to the client
+        let accumulatedResponse = "";
+        let finalAssistantResponse = "";
 
-    const input = await buildSimpleContext(branchId);
+        const input = await buildSimpleContext(branchId);
 
-    const stream = await openaiClient.responses.create({
-      model: requestedModel,
-      input,
-      stream: true,
-    });
-
-    for await (const event of stream) {
-      switch (event.type) {
-        case "response.output_text.delta": {
-          const chunk = event.delta ?? "";
-          accumulatedResponse += chunk;
-          await sse.writeEventSafe("delta", { text: chunk });
-          break;
-        }
-
-        case "response.output_text.done": {
-          // Prefer the authoritative final text if provided,
-          // otherwise fall back to our accumulator.
-          finalAssistantResponse = event.text ?? accumulatedResponse;
-          break;
-        }
-
-        case "response.completed": {
-          // Record the actual model used (if the server echoes it)
-          if (event.response?.model) effectiveModel = event.response.model;
-          // Ensure finalAssistantText is set even if `.done` never arrived
-          if (!finalAssistantResponse)
-            finalAssistantResponse = accumulatedResponse;
-          break;
-        }
-
-        case "response.failed": {
-          // throw an error if the response failed. Error handling in the catch block.
-          throw new Error(event.response.error?.message ?? "upstream_error");
-        }
-
-        default:
-          // ignore other event types for now
-          break;
-      }
-    }
-
-    // Perform final commit in one transaction
-    const txStart = Date.now();
-    const finalPayload = await prisma.$transaction(async (tx) => {
-      // Load base branch
-      const baseBranch = await tx.branch.findUnique({
-        where: { id: branchId },
-        include: { graph: true },
-      });
-      if (!baseBranch) return { error: Errors.notFound("Branch") };
-      if (baseBranch.graph.userId !== owner.id)
-        return { error: Errors.forbidden() };
-
-      // Optional fork
-      let targetBranch = baseBranch;
-      if (forkFromNodeId) {
-        const fromNode = await tx.graphNode.findUnique({
-          where: { id: forkFromNodeId },
+        const stream = await openaiClient.responses.create({
+          model: requestedModel,
+          input,
+          stream: true,
         });
-        if (!fromNode || fromNode.graphId !== baseBranch.graphId) {
+
+        let streamedDeltas = 0;
+
+        for await (const event of stream) {
+          switch (event.type) {
+            case "response.output_text.delta": {
+              const chunk = event.delta ?? "";
+              accumulatedResponse += chunk;
+              await sse.writeEventSafe("delta", { text: chunk });
+              streamedDeltas += 1;
+              if (streamedDeltas == 1) {
+                log.info({
+                  event: "first_byte",
+                  durationMs: Date.now() - ctx.startedAt,
+                });
+              }
+              break;
+            }
+            case "response.output_text.done": {
+              finalAssistantResponse = event.text ?? accumulatedResponse;
+              break;
+            }
+            case "response.completed": {
+              if (event.response?.model) effectiveModel = event.response.model;
+              if (event.response?.usage?.output_tokens)
+                effectiveTokenCount = event.response.usage.output_tokens;
+              if (!finalAssistantResponse)
+                finalAssistantResponse = accumulatedResponse;
+              log.info({
+                event: "model_completed",
+                durationMs: Date.now() - ctx.startedAt,
+              });
+              break;
+            }
+            case "response.failed": {
+              throw new Error(
+                event.response.error?.message ?? "upstream_error"
+              );
+            }
+            default:
+              break;
+          }
+        }
+
+        // Final commit transaction
+        const txStart = Date.now();
+        const finalPayload = await prisma.$transaction(async (tx) => {
+          const baseBranch = await tx.branch.findUnique({
+            where: { id: branchId },
+            include: { graph: true },
+          });
+          if (!baseBranch) return { error: Errors.notFound("Branch") };
+          if (baseBranch.graph.userId !== owner.id)
+            return { error: Errors.forbidden() };
+
+          let targetBranch = baseBranch;
+          if (forkFromNodeId) {
+            const fromNode = await tx.graphNode.findUnique({
+              where: { id: forkFromNodeId },
+            });
+            if (!fromNode || fromNode.graphId !== baseBranch.graphId) {
+              return {
+                error: Errors.validation(
+                  "forkFromNodeId must belong to the same graph"
+                ),
+              };
+            }
+            targetBranch = await tx.branch.create({
+              data: {
+                graphId: baseBranch.graphId,
+                name: newBranchName ?? `fork-${fromNode.id.slice(-6)}`,
+                rootNodeId: fromNode.id,
+                tipNodeId: fromNode.id,
+                version: 0,
+              },
+              include: { graph: true },
+            });
+          }
+
+          if (
+            !forkFromNodeId &&
+            expectedVersion != null &&
+            expectedVersion !== baseBranch.version
+          ) {
+            return {
+              error: Errors.conflictTip(
+                baseBranch.tipNodeId ?? null,
+                baseBranch.version
+              ),
+            };
+          }
+
+          const block = await tx.contextBlock.create({
+            data: {
+              userId: owner.id,
+              kind: "assistant",
+              content: {
+                text: finalAssistantResponse,
+              } as unknown as Prisma.InputJsonValue,
+              model: effectiveModel,
+              tokenCount: effectiveTokenCount,
+              public: false,
+            },
+          });
+          const node = await tx.graphNode.create({
+            data: { graphId: targetBranch.graphId, blockId: block.id },
+          });
+          await tx.blockEdge.create({
+            data: {
+              graphId: targetBranch.graphId,
+              parentNodeId: targetBranch.tipNodeId!,
+              childNodeId: node.id,
+              relation: "follows",
+              ord: 0,
+            },
+          });
+          const updated = await tx.branch.updateMany({
+            where: {
+              id: targetBranch.id,
+              version: forkFromNodeId
+                ? 0
+                : (expectedVersion ?? baseBranch.version),
+            },
+            data: { tipNodeId: node.id, version: { increment: 1 } },
+          });
+          if (updated.count === 0) {
+            return {
+              error: Errors.conflictTip(
+                targetBranch.tipNodeId ?? null,
+                targetBranch.version ?? 0
+              ),
+            };
+          }
+
+          await tx.graph.update({
+            where: { id: targetBranch.graphId },
+            data: { lastActivityAt: new Date() },
+          });
+
+          if (forkFromNodeId) {
+            return {
+              assistantItem: { nodeId: node.id, block },
+              branch: {
+                id: targetBranch.id,
+                graphId: targetBranch.graphId,
+                name: targetBranch.name,
+                rootNodeId: targetBranch.rootNodeId,
+                tipNodeId: node.id,
+                version: 1,
+              },
+            };
+          }
+
           return {
-            error: Errors.validation(
-              "forkFromNodeId must belong to the same graph"
-            ),
+            assistantItem: { nodeId: node.id, block },
+            newTip: node.id,
+            version: baseBranch.version + 1,
           };
-        }
-        targetBranch = await tx.branch.create({
-          data: {
-            graphId: baseBranch.graphId,
-            name: newBranchName ?? `fork-${fromNode.id.slice(-6)}`,
-            rootNodeId: fromNode.id,
-            tipNodeId: fromNode.id,
-            version: 0,
-          },
-          include: { graph: true },
         });
-      }
+        log.info({
+          event: "tx_end",
+          ok: true,
+          durationMs: Date.now() - txStart,
+        });
 
-      if (
-        !forkFromNodeId &&
-        expectedVersion != null &&
-        expectedVersion !== baseBranch.version
-      ) {
-        return {
-          error: Errors.conflictTip(
-            baseBranch.tipNodeId ?? null,
-            baseBranch.version
-          ),
-        };
-      }
+        if (
+          (finalPayload as unknown as { error?: unknown }).error instanceof
+          Response
+        ) {
+          clearInterval(keepalive);
+          await sse.writeEventSafe("error", {
+            error: {
+              code: "CONFLICT_TIP_MOVED",
+              message: "Branch tip has advanced",
+            },
+          });
+          await sse.writer.close();
+          return;
+        }
 
-      const block = await tx.contextBlock.create({
-        data: {
-          userId: owner.id,
-          kind: "assistant",
-          content: {
-            text: finalAssistantResponse,
-          } as unknown as Prisma.InputJsonValue,
-          model: effectiveModel,
-          public: false,
-        },
-      });
-      const node = await tx.graphNode.create({
-        data: { graphId: targetBranch.graphId, blockId: block.id },
-      });
-      await tx.blockEdge.create({
-        data: {
-          graphId: targetBranch.graphId,
-          parentNodeId: targetBranch.tipNodeId!,
-          childNodeId: node.id,
-          relation: "follows",
-          ord: 0,
-        },
-      });
-      const updated = await tx.branch.updateMany({
-        where: {
-          id: targetBranch.id,
-          version: forkFromNodeId ? 0 : (expectedVersion ?? baseBranch.version),
-        },
-        data: { tipNodeId: node.id, version: { increment: 1 } },
-      });
-      if (updated.count === 0) {
-        return {
-          error: Errors.conflictTip(
-            targetBranch.tipNodeId ?? null,
-            targetBranch.version ?? 0
-          ),
-        };
-      }
-
-      await tx.graph.update({
-        where: { id: targetBranch.graphId },
-        data: { lastActivityAt: new Date() },
-      });
-
-      if (forkFromNodeId) {
-        return {
-          assistantItem: { nodeId: node.id, block },
-          branch: {
-            id: targetBranch.id,
-            graphId: targetBranch.graphId,
-            name: targetBranch.name,
-            rootNodeId: targetBranch.rootNodeId,
-            tipNodeId: node.id,
-            version: 1,
-          },
-        };
-      }
-
-      return {
-        assistantItem: { nodeId: node.id, block },
-        newTip: node.id,
-        version: baseBranch.version + 1,
-      };
-    });
-    log.info({ event: "tx_end", ok: true, durationMs: Date.now() - txStart });
-
-    if (
-      (finalPayload as unknown as { error?: unknown }).error instanceof Response
-    ) {
-      clearInterval(keepalive);
-      queueMicrotask(async () => {
-        await sse.writeEventSafe("error", {
-          error: {
-            code: "CONFLICT_TIP_MOVED",
-            message: "Branch tip has advanced",
-          },
+        await sse.writeEventSafe("final", finalPayload);
+        log.info({
+          event: "sse_final_emit",
+          durationMs: Date.now() - ctx.startedAt,
         });
         await sse.writer.close();
-      });
-      return new Response(sse.readable, { headers });
-    }
+        cleanupOnce();
 
-    // Emit final and cache idempotent
-    queueMicrotask(async () => {
-      await sse.writeEventSafe("final", finalPayload);
-      await sse.writer.close();
-      cleanupOnce();
-    });
-    log.info({ event: "sse_final_emit" });
-
-    // Cache final for idempotency
-    await cacheIdempotentResponse({
-      req,
-      userId: owner.id,
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-      body: finalPayload,
-    });
-
-    // Ensure keepalive cleared when stream closes
-    void sse.writer.closed.then(() => {
-      clearInterval(keepalive);
-      cleanupOnce();
-      log.info({
-        event: "sse_close",
-        reason: "client_closed",
-        durationMs: Date.now() - ctx.startedAt,
-      });
-    });
+        await cacheIdempotentResponse({
+          req,
+          userId: owner.id,
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+          body: finalPayload,
+        });
+      } catch (err) {
+        console.error(
+          "POST /v1/branches/{branchId}/generate/stream background error",
+          err
+        );
+        await sse.writeEventSafe("error", {
+          error: { code: "INTERNAL", message: "Internal server error" },
+        });
+        await sse.writer.close();
+      } finally {
+        void sse.writer.closed.then(() => {
+          clearInterval(keepalive);
+          cleanupOnce();
+          log.info({
+            event: "sse_close",
+            reason: "client_closed",
+            durationMs: Date.now() - ctx.startedAt,
+          });
+        });
+      }
+    })();
 
     const res = new Response(sse.readable, { headers });
-    log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
+    log.info({
+      event: "sse_open",
+      durationMs: Date.now() - ctx.startedAt,
+    });
     return res;
   } catch (err) {
     console.error("POST /v1/branches/{branchId}/generate/stream error", err);
