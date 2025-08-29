@@ -1,6 +1,5 @@
-import OpenAI from "openai";
-
 import { buildSimpleContext } from "@/lib/ai/build-context";
+import { openai } from "@/lib/ai/openai";
 import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
 import {
@@ -27,9 +26,7 @@ import type { Prisma } from "@/lib/generated/prisma";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // avoids any caching of the SSE route
 
-const openaiClient = new OpenAI({
-  apiKey: process.env["OPENAI_API_KEY"],
-});
+const openaiClient = openai;
 
 export async function POST(
   req: Request,
