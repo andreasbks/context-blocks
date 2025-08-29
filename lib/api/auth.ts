@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { Errors, jsonError } from "@/lib/api/errors";
+import { Errors } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 import { ensureCurrentUserExists } from "@/lib/users/ensure-user";
 
@@ -12,7 +12,7 @@ export async function requireOwner(): Promise<
 
   await ensureCurrentUserExists();
   const user = await prisma.user.findUnique({ where: { clerkUserId } });
-  if (!user) return jsonError("INTERNAL", "Authenticated user record missing");
+  if (!user) return Errors.forbidden();
 
   return { owner: { id: user.id }, clerkUserId };
 }

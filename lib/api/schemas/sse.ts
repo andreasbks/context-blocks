@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ContextBlockSchema } from "./shared";
+import { BranchSchema, ContextBlockSchema } from "./shared";
 
 export const SSEKeepaliveSchema = z.object({});
 
@@ -15,5 +15,12 @@ export const SSEFinalSchema = z.object({
   items: z.array(SSEItemSchema),
   newTip: z.string().optional(),
   version: z.number().int().optional(),
-  branch: z.record(z.string(), z.unknown()).optional(),
+  branch: BranchSchema.pick({
+    id: true,
+    graphId: true,
+    name: true,
+    rootNodeId: true,
+    tipNodeId: true,
+    version: true,
+  }).optional(),
 });
