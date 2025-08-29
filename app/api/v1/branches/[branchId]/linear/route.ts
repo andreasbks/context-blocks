@@ -1,6 +1,10 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
 import { createRequestLogger } from "@/lib/api/logger";
+import { BranchIdParam, LinearQuery } from "@/lib/api/schemas/queries";
+import { LinearResponse } from "@/lib/api/schemas/responses";
+import { parseParams, parseQuery } from "@/lib/api/validators";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { ContextBlock } from "@/lib/generated/prisma";
 
@@ -13,21 +17,23 @@ export async function GET(
     if (ownerOrRes instanceof Response) return ownerOrRes;
     const { owner } = ownerOrRes;
 
-    const { branchId } = await params;
+    const parsedParams = await parseParams(params, BranchIdParam);
+    if (parsedParams instanceof Response) return parsedParams;
+    const { branchId } = parsedParams;
     const { log, ctx } = createRequestLogger(req, {
       route: "GET /v1/branches/:id/linear",
       userId: owner.id,
     });
     log.info({ event: "request_start" });
     const url = new URL(req.url);
-    const limit = Math.min(
-      parseInt(url.searchParams.get("limit") || "50", 10),
-      200
-    );
-    const cursorNodeId = url.searchParams.get("cursorNodeId");
-    const includeRefs = (url.searchParams.get("include") || "")
-      .split(",")
-      .includes("references");
+    const q = parseQuery(url.searchParams, LinearQuery);
+    if (q instanceof Response) return q;
+    const { limit, cursorNodeId, include } = q as unknown as {
+      limit: number;
+      cursorNodeId?: string;
+      include?: string;
+    };
+    const includeRefs = (include || "").split(",").includes("references");
 
     const br = await prisma.branch.findUnique({
       where: { id: branchId },
@@ -89,9 +95,10 @@ export async function GET(
       })
     );
 
-    const res = new Response(
-      JSON.stringify({ items: items.filter(Boolean), nextCursor }),
-      { headers: { "Content-Type": "application/json" } }
+    const res = validateAndSend(
+      { items: items.filter(Boolean), nextCursor },
+      LinearResponse,
+      200
     );
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;

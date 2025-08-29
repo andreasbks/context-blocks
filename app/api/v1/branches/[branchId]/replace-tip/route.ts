@@ -2,7 +2,11 @@ import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
 import { createRequestLogger } from "@/lib/api/logger";
 import { checkWriteRateLimit } from "@/lib/api/rate-limit";
-import { ReplaceTipBody } from "@/lib/api/validation";
+import { BranchIdParam } from "@/lib/api/schemas/queries";
+import { ReplaceTipBody } from "@/lib/api/schemas/requests";
+import { ReplaceTipResponse } from "@/lib/api/schemas/responses";
+import { parseParams } from "@/lib/api/validators";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 
@@ -32,7 +36,9 @@ export async function POST(
       return rl;
     }
 
-    const { branchId } = await params;
+    const parsedParams = await parseParams(params, BranchIdParam);
+    if (parsedParams instanceof Response) return parsedParams;
+    const { branchId } = parsedParams;
     const body = await req.json().catch(() => null);
     const parsed = ReplaceTipBody.safeParse(body);
     const { log, ctx } = createRequestLogger(req, {
@@ -126,9 +132,7 @@ export async function POST(
 
     if ("error" in result && result.error instanceof Response)
       return result.error;
-    const res = new Response(JSON.stringify(result), {
-      headers: { "Content-Type": "application/json" },
-    });
+    const res = validateAndSend(result, ReplaceTipResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {

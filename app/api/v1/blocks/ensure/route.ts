@@ -6,7 +6,9 @@ import {
 } from "@/lib/api/idempotency";
 import { createRequestLogger } from "@/lib/api/logger";
 import { checkWriteRateLimit } from "@/lib/api/rate-limit";
-import { EnsureBlockBody } from "@/lib/api/validation";
+import { EnsureBlockBody } from "@/lib/api/schemas/requests";
+import { EnsureBlockResponse } from "@/lib/api/schemas/responses";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 
@@ -93,9 +95,7 @@ export async function POST(req: Request) {
       body: resBody,
     });
 
-    const res = new Response(JSON.stringify(resBody), {
-      headers: { "Content-Type": "application/json" },
-    });
+    const res = validateAndSend(resBody, EnsureBlockResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {

@@ -9,8 +9,18 @@ import {
 } from "@/lib/api/idempotency";
 import { createRequestLogger } from "@/lib/api/logger";
 import { acquireSSESlot, checkWriteRateLimit } from "@/lib/api/rate-limit";
+import { BranchIdParam } from "@/lib/api/schemas/queries";
+import { SendStreamBody } from "@/lib/api/schemas/requests";
+import { ErrorEnvelopeSchema } from "@/lib/api/schemas/shared";
+import {
+  SSEDeltaSchema,
+  SSEFinalSchema,
+  SSEItemSchema,
+  SSEKeepaliveSchema,
+} from "@/lib/api/schemas/sse";
 import { createSSEContext } from "@/lib/api/sse-context";
-import { SendStreamBody } from "@/lib/api/validation";
+import { writeSSE } from "@/lib/api/validators";
+import { parseParams } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 
@@ -52,7 +62,9 @@ export async function POST(
     if (ownerOrRes instanceof Response) return ownerOrRes;
     const { owner } = ownerOrRes;
 
-    const { branchId } = await params;
+    const paramOk = await parseParams(params, BranchIdParam);
+    if (paramOk instanceof Response) return paramOk;
+    const { branchId } = paramOk;
 
     const rl = checkWriteRateLimit(
       owner.id,
@@ -76,7 +88,7 @@ export async function POST(
 
     if (cached) {
       queueMicrotask(async () => {
-        await sse.writeEventSafe("final", cached.body ?? {});
+        await writeSSE(SSEFinalSchema, "final", cached.body ?? {}, sse);
         await sse.writer.close();
         cleanupOnce();
       });
@@ -89,13 +101,18 @@ export async function POST(
     const parsed = SendStreamBody.safeParse(json);
     if (!parsed.success) {
       queueMicrotask(async () => {
-        await sse.writeEventSafe("error", {
-          error: {
-            code: "VALIDATION_FAILED",
-            message: "Invalid request body",
-            details: parsed.error.flatten(),
+        await writeSSE(
+          ErrorEnvelopeSchema,
+          "error",
+          {
+            error: {
+              code: "VALIDATION_FAILED",
+              message: "Invalid request body",
+              details: parsed.error.flatten(),
+            },
           },
-        });
+          sse
+        );
         await sse.writer.close();
         cleanupOnce();
       });
@@ -107,7 +124,7 @@ export async function POST(
       parsed.data;
 
     const keepalive = setInterval(() => {
-      void sse.writeEventSafe("keepalive", {});
+      void writeSSE(SSEKeepaliveSchema, "keepalive", {}, sse);
     }, 15000);
 
     // Start work in background so events can flush immediately
@@ -234,10 +251,12 @@ export async function POST(
           };
 
         // Unified item envelope for persisted user message
-        await sse.writeEventSafe("item", {
-          role: "user",
-          item: { nodeId: userNodeId, block: userBlock },
-        });
+        await writeSSE(
+          SSEItemSchema,
+          "item",
+          { role: "user", item: { nodeId: userNodeId, block: userBlock } },
+          sse
+        );
         log.info({
           event: "business_event",
           kind: "graph_write",
@@ -263,7 +282,7 @@ export async function POST(
             case "response.output_text.delta": {
               const chunk = event.delta ?? "";
               accumulatedResponse += chunk;
-              await sse.writeEventSafe("delta", { text: chunk });
+              await writeSSE(SSEDeltaSchema, "delta", { text: chunk }, sse);
               streamedDeltas += 1;
               if (streamedDeltas == 1) {
                 log.info({
@@ -385,12 +404,17 @@ export async function POST(
           Response
         ) {
           clearInterval(keepalive);
-          await sse.writeEventSafe("error", {
-            error: {
-              code: "CONFLICT_TIP_MOVED",
-              message: "Branch tip has advanced",
+          await writeSSE(
+            ErrorEnvelopeSchema,
+            "error",
+            {
+              error: {
+                code: "CONFLICT_TIP_MOVED",
+                message: "Branch tip has advanced",
+              },
             },
-          });
+            sse
+          );
           await sse.writer.close();
           return;
         }
@@ -410,7 +434,7 @@ export async function POST(
           ],
           ...rest,
         };
-        await sse.writeEventSafe("final", finalUnified);
+        await writeSSE(SSEFinalSchema, "final", finalUnified, sse);
         log.info({
           event: "sse_final_emit",
           durationMs: Date.now() - ctx.startedAt,
@@ -430,9 +454,12 @@ export async function POST(
           "POST /v1/branches/{branchId}/send/stream background error",
           err
         );
-        await sse.writeEventSafe("error", {
-          error: { code: "INTERNAL", message: "Internal server error" },
-        });
+        await writeSSE(
+          ErrorEnvelopeSchema,
+          "error",
+          { error: { code: "INTERNAL", message: "Internal server error" } },
+          sse
+        );
         await sse.writer.close();
       } finally {
         void sse.writer.closed.then(() => {
@@ -453,9 +480,12 @@ export async function POST(
   } catch (err) {
     console.error("POST /v1/branches/{branchId}/send/stream error", err);
     queueMicrotask(async () => {
-      await sse.writeEventSafe("error", {
-        error: { code: "INTERNAL", message: "Internal server error" },
-      });
+      await writeSSE(
+        ErrorEnvelopeSchema,
+        "error",
+        { error: { code: "INTERNAL", message: "Internal server error" } },
+        sse
+      );
       await sse.writer.close();
     });
     return new Response(sse.readable, { status: 500, headers });

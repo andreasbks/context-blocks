@@ -2,7 +2,11 @@ import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
 import { createRequestLogger } from "@/lib/api/logger";
 import { checkWriteRateLimit } from "@/lib/api/rate-limit";
-import { JumpBody } from "@/lib/api/validation";
+import { BranchIdParam } from "@/lib/api/schemas/queries";
+import { JumpBody } from "@/lib/api/schemas/requests";
+import { JumpResponse } from "@/lib/api/schemas/responses";
+import { parseParams } from "@/lib/api/validators";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 
 export async function POST(
@@ -14,7 +18,9 @@ export async function POST(
     if (ownerOrRes instanceof Response) return ownerOrRes;
     const { owner } = ownerOrRes;
 
-    const { branchId } = await params;
+    const parsedParams = await parseParams(params, BranchIdParam);
+    if (parsedParams instanceof Response) return parsedParams;
+    const { branchId } = parsedParams;
     const rl = checkWriteRateLimit(owner.id, "POST /v1/branches/:id/jump");
     if (rl) {
       const { log } = createRequestLogger(req, {
@@ -99,9 +105,7 @@ export async function POST(
     log.info({ event: "tx_end", ok: true, durationMs: Date.now() - txStart });
     if ("error" in result && result.error instanceof Response)
       return result.error;
-    const res = new Response(JSON.stringify(result), {
-      headers: { "Content-Type": "application/json" },
-    });
+    const res = validateAndSend(result, JumpResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {

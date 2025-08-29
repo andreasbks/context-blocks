@@ -6,7 +6,14 @@ import {
 } from "@/lib/api/idempotency";
 import { createRequestLogger } from "@/lib/api/logger";
 import { checkWriteRateLimit } from "@/lib/api/rate-limit";
-import { AppendBody } from "@/lib/api/validation";
+import { BranchIdParam } from "@/lib/api/schemas/queries";
+import { AppendBody } from "@/lib/api/schemas/requests";
+import {
+  AppendForkResponse,
+  AppendResponse,
+} from "@/lib/api/schemas/responses";
+import { parseParams } from "@/lib/api/validators";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 
@@ -66,7 +73,9 @@ export async function POST(
     } = parsed.data;
 
     // Preload branch and verify ownership (clear error semantics)
-    const { branchId } = await params;
+    const paramOk = await parseParams(params, BranchIdParam);
+    if (paramOk instanceof Response) return paramOk;
+    const { branchId } = paramOk;
     const baseBranch = await prisma.branch.findUnique({
       where: { id: branchId },
       include: { graph: true },
@@ -187,10 +196,10 @@ export async function POST(
       body: result,
     });
 
-    const res = new Response(JSON.stringify(result), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    const res =
+      "branch" in result
+        ? validateAndSend(result, AppendForkResponse, 200)
+        : validateAndSend(result, AppendResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {

@@ -6,7 +6,9 @@ import {
 } from "@/lib/api/idempotency";
 import { createRequestLogger } from "@/lib/api/logger";
 import { checkWriteRateLimit } from "@/lib/api/rate-limit";
-import { StartGraphBody } from "@/lib/api/validation";
+import { StartGraphBody } from "@/lib/api/schemas/requests";
+import { StartGraphResponse } from "@/lib/api/schemas/responses";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 
@@ -118,10 +120,7 @@ export async function POST(req: Request) {
       body: result,
     });
 
-    const res = new Response(JSON.stringify(result), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    const res = validateAndSend(result, StartGraphResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {

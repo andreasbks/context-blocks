@@ -1,6 +1,10 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
 import { createRequestLogger } from "@/lib/api/logger";
+import { BlocksListQuery } from "@/lib/api/schemas/queries";
+import { BlocksListResponse } from "@/lib/api/schemas/responses";
+import { parseQuery } from "@/lib/api/validators";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 
@@ -16,25 +20,14 @@ export async function GET(req: Request) {
       userId: owner.id,
     });
     log.info({ event: "request_start" });
-    const limit = Math.min(
-      parseInt(url.searchParams.get("limit") || "20", 10),
-      100
-    );
-    const cursor = url.searchParams.get("cursor");
-    const publicOnly =
-      (url.searchParams.get("public") ?? "true").toLowerCase() !== "false";
-    const kind = url.searchParams.get("kind");
-    const q = url.searchParams.get("q")?.trim();
-
-    const kindFilter: "user" | "assistant" | undefined =
-      kind === "user" || kind === "assistant"
-        ? (kind as "user" | "assistant")
-        : undefined;
+    const query = parseQuery(url.searchParams, BlocksListQuery);
+    if (query instanceof Response) return query;
+    const { limit, cursor, public: publicOnly, kind, q } = query;
 
     const where: Prisma.ContextBlockWhereInput = {
       userId: owner.id,
       ...(publicOnly ? { public: true } : {}),
-      ...(kindFilter ? { kind: kindFilter } : {}),
+      ...(kind ? { kind } : {}),
       ...(q
         ? {
             content: {
@@ -67,9 +60,7 @@ export async function GET(req: Request) {
       nextCursor = next?.id ?? null;
     }
 
-    const res = new Response(JSON.stringify({ items, nextCursor }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    const res = validateAndSend({ items, nextCursor }, BlocksListResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {

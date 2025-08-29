@@ -2,7 +2,11 @@ import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
 import { createRequestLogger } from "@/lib/api/logger";
 import { checkWriteRateLimit } from "@/lib/api/rate-limit";
-import { InjectBody } from "@/lib/api/validation";
+import { BranchIdParam } from "@/lib/api/schemas/queries";
+import { InjectBody } from "@/lib/api/schemas/requests";
+import { InjectResponse } from "@/lib/api/schemas/responses";
+import { parseParams } from "@/lib/api/validators";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 
 export async function POST(
@@ -28,7 +32,9 @@ export async function POST(
       return rl;
     }
 
-    const { branchId } = await params;
+    const parsedParams = await parseParams(params, BranchIdParam);
+    if (parsedParams instanceof Response) return parsedParams;
+    const { branchId } = parsedParams;
     const body = await req.json().catch(() => null);
     const parsed = InjectBody.safeParse(body);
     const { log, ctx } = createRequestLogger(req, {
@@ -86,11 +92,10 @@ export async function POST(
     });
     log.info({ event: "tx_end", ok: true, durationMs: Date.now() - txStart });
 
-    const res = new Response(
-      JSON.stringify({
-        reference: { nodeId: ref.childNodeId, block: ref.childNode.block },
-      }),
-      { headers: { "Content-Type": "application/json" } }
+    const res = validateAndSend(
+      { reference: { nodeId: ref.childNodeId, block: ref.childNode.block } },
+      InjectResponse,
+      200
     );
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;

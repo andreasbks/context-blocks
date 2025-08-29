@@ -1,6 +1,10 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
 import { createRequestLogger } from "@/lib/api/logger";
+import { GraphsListQuery } from "@/lib/api/schemas/queries";
+import { GraphsListResponse } from "@/lib/api/schemas/responses";
+import { parseQuery } from "@/lib/api/validators";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: Request) {
@@ -15,11 +19,9 @@ export async function GET(req: Request) {
       userId: owner.id,
     });
     log.info({ event: "request_start" });
-    const limit = Math.min(
-      parseInt(url.searchParams.get("limit") || "20", 10),
-      100
-    );
-    const cursor = url.searchParams.get("cursor");
+    const query = parseQuery(url.searchParams, GraphsListQuery);
+    if (query instanceof Response) return query;
+    const { limit, cursor } = query;
 
     const items = await prisma.graph.findMany({
       where: { userId: owner.id },
@@ -35,9 +37,7 @@ export async function GET(req: Request) {
       nextCursor = next?.id ?? null;
     }
 
-    const res = new Response(JSON.stringify({ items, nextCursor }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    const res = validateAndSend({ items, nextCursor }, GraphsListResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {

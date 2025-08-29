@@ -1,6 +1,10 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
 import { createRequestLogger } from "@/lib/api/logger";
+import { GraphIdParam } from "@/lib/api/schemas/queries";
+import { GraphDetailResponse } from "@/lib/api/schemas/responses";
+import { parseParams } from "@/lib/api/validators";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 
 export async function GET(
@@ -18,7 +22,9 @@ export async function GET(
     });
     log.info({ event: "request_start" });
 
-    const { graphId } = await params;
+    const parsedParams = await parseParams(params, GraphIdParam);
+    if (parsedParams instanceof Response) return parsedParams;
+    const { graphId } = parsedParams;
 
     const graph = await prisma.graph.findFirst({
       where: { id: graphId, userId: owner.id },
@@ -38,9 +44,7 @@ export async function GET(
       orderBy: { createdAt: "asc" },
     });
 
-    const res = new Response(JSON.stringify({ graph, branches }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    const res = validateAndSend({ graph, branches }, GraphDetailResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {

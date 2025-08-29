@@ -1,5 +1,9 @@
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
+import { NodeIdParam, NodeRefsQuery } from "@/lib/api/schemas/queries";
+import { NodeRefsResponse } from "@/lib/api/schemas/responses";
+import { parseParams, parseQuery } from "@/lib/api/validators";
+import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 
 export async function GET(
@@ -11,13 +15,13 @@ export async function GET(
     if (ownerOrRes instanceof Response) return ownerOrRes;
     const { owner } = ownerOrRes;
 
-    const { nodeId } = await params;
+    const parsedParams = await parseParams(params, NodeIdParam);
+    if (parsedParams instanceof Response) return parsedParams;
+    const { nodeId } = parsedParams;
     const url = new URL(req.url);
-    const limit = Math.min(
-      parseInt(url.searchParams.get("limit") || "20", 10),
-      100
-    );
-    const cursor = url.searchParams.get("cursor");
+    const q = parseQuery(url.searchParams, NodeRefsQuery);
+    if (q instanceof Response) return q;
+    const { limit, cursor } = q;
 
     const node = await prisma.graphNode.findUnique({
       where: { id: nodeId },
@@ -52,9 +56,7 @@ export async function GET(
       nodeId: r.childNodeId,
       block: r.childNode.block,
     }));
-    return new Response(JSON.stringify({ items, nextCursor }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return validateAndSend({ items, nextCursor }, NodeRefsResponse, 200);
   } catch (err) {
     console.error("GET /v1/nodes/{nodeId}:references error", err);
     return jsonError("INTERNAL", "Internal server error");
