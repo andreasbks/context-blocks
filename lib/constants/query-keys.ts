@@ -6,5 +6,13 @@
  */
 
 export const QUERY_KEYS = {
-  // Base keys - extend as features are implemented
+  graphsList: () => ["graphs", "list"] as const,
+  graphDetail: (graphId: string) => ["graphs", graphId, "detail"] as const,
+  branchLinear: (branchId: string, includeRefs: boolean) =>
+    [
+      "branches",
+      branchId,
+      "linear",
+      includeRefs ? "withRefs" : "noRefs",
+    ] as const,
 } as const;
