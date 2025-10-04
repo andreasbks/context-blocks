@@ -3,6 +3,7 @@
 import { UseQueryResult } from "@tanstack/react-query";
 import { z } from "zod";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   GraphDetailResponse,
@@ -150,16 +150,27 @@ export function ChatArea({
 
         {/* Streaming assistant response */}
         {streamingAssistant && (
-          <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-accent/30 to-accent/10 p-5 shadow-sm">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <Label className="text-xs font-medium text-muted-foreground">
-                Assistant
-              </Label>
+          <div className="rounded-xl border-2 border-purple-500/30 bg-card shadow-md">
+            {/* Block Header - Streaming State */}
+            <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-border/50">
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="font-semibold bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20"
+                >
+                  <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse mr-1.5" />
+                  🤖 Assistant Response
+                </Badge>
+                <Badge variant="secondary" className="text-xs">
+                  Generating...
+                </Badge>
+              </div>
             </div>
-            <div className="whitespace-pre-wrap leading-relaxed text-foreground">
+
+            {/* Streaming Content */}
+            <div className="px-5 py-4 whitespace-pre-wrap leading-relaxed text-foreground">
               {streamingAssistant}
-              <span className="inline-block w-0.5 h-5 bg-primary animate-pulse ml-1" />
+              <span className="inline-block w-0.5 h-5 bg-purple-500 animate-pulse ml-1" />
             </div>
           </div>
         )}

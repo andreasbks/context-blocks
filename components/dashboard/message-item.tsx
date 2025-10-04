@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 
-import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   GraphDetailResponse,
   LinearResponse,
@@ -25,6 +25,23 @@ function getBlockText(block: ContextBlock): string {
   return "";
 }
 
+// Block type configuration - easily extensible for future types
+const blockTypeConfig = {
+  user: {
+    label: "User Input",
+    color: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20",
+    borderColor: "border-blue-500/30",
+    icon: "👤",
+  },
+  assistant: {
+    label: "Assistant Response",
+    color:
+      "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20",
+    borderColor: "border-purple-500/30",
+    icon: "🤖",
+  },
+} as const;
+
 interface MessageItemProps {
   item: TimelineItem;
   branches: Branch[];
@@ -38,7 +55,8 @@ export function MessageItem({
   currentBranchId,
   onSelectBranch,
 }: MessageItemProps) {
-  const isUser = item.block.kind === "user";
+  const blockType = item.block.kind;
+  const config = blockTypeConfig[blockType];
 
   // Find sibling branches that fork from this node
   const siblingBranches = branches.filter(
@@ -48,41 +66,47 @@ export function MessageItem({
   return (
     <div
       className={`
-        rounded-xl p-5 transition-all duration-200
-        ${
-          isUser
-            ? "bg-primary/5 border-l-4 border-primary ml-8"
-            : "bg-accent/30 border-l-4 border-accent mr-8"
-        }
+        rounded-xl border-2 transition-all duration-200
+        bg-card hover:shadow-md
+        ${config.borderColor}
       `}
     >
-      {/* Message Header */}
-      <div className="flex items-center gap-2 mb-3">
-        <div
-          className={`
-          w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-          ${
-            isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-accent text-accent-foreground"
-          }
-        `}
-        >
-          {isUser ? "U" : "A"}
+      {/* Block Header - Type & Metadata */}
+      <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-border/50">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className={`font-semibold ${config.color}`}>
+            <span className="mr-1.5">{config.icon}</span>
+            {config.label}
+          </Badge>
+
+          {item.block.model && (
+            <Badge variant="secondary" className="text-xs">
+              {item.block.model}
+            </Badge>
+          )}
+
+          {item.block.public && (
+            <Badge variant="secondary" className="text-xs">
+              📚 Public
+            </Badge>
+          )}
         </div>
-        <Label className="text-sm font-semibold">
-          {isUser ? "You" : "Assistant"}
-        </Label>
+
+        <div className="text-xs text-muted-foreground">
+          {item.block.createdAt
+            ? new Date(item.block.createdAt).toLocaleString()
+            : "Just now"}
+        </div>
       </div>
 
-      {/* Message Content */}
-      <div className="whitespace-pre-wrap leading-relaxed text-foreground pl-10">
+      {/* Block Content */}
+      <div className="px-5 py-4 whitespace-pre-wrap leading-relaxed text-foreground">
         {getBlockText(item.block)}
       </div>
 
       {/* Sibling Branches - Fork Points */}
       {siblingBranches.length > 0 && (
-        <div className="mt-4 pl-10 space-y-2">
+        <div className="px-5 pb-4 space-y-2 border-t border-border/50 pt-4">
           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground mb-2">
             <span className="text-base">🌿</span>
             <span>Alternate branches from this point:</span>
@@ -114,7 +138,7 @@ export function MessageItem({
 
       {/* References */}
       {item.references && item.references.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-border/30 pl-10">
+        <div className="flex flex-wrap gap-2 px-5 pb-4 pt-3 border-t border-border/50">
           <span className="text-xs font-medium text-muted-foreground">
             📎 References:
           </span>
