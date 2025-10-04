@@ -19,6 +19,7 @@ import {
   LinearResponse,
 } from "@/lib/api/schemas/responses";
 
+import { BranchPoint } from "./branch-point";
 import { MessageItem } from "./message-item";
 
 type TimelineItem = z.infer<typeof LinearResponse>["items"][number];
@@ -137,15 +138,28 @@ export function ChatArea({
             No messages yet. Start the conversation below.
           </div>
         ) : (
-          linearQuery.data!.items.map((item) => (
-            <MessageItem
-              key={item.nodeId}
-              item={item}
-              branches={graphDetailQuery.data?.branches ?? []}
-              currentBranchId={selectedBranchId ?? null}
-              onSelectBranch={onSelectBranch}
-            />
-          ))
+          linearQuery.data!.items.map((item) => {
+            // Find branches that fork from this node (excluding current branch)
+            const alternateBranches = (
+              graphDetailQuery.data?.branches ?? []
+            ).filter(
+              (b) => b.rootNodeId === item.nodeId && b.id !== selectedBranchId
+            );
+
+            return (
+              <div key={item.nodeId}>
+                <MessageItem item={item} />
+
+                {/* Show branch point after this block if there are alternate branches */}
+                {alternateBranches.length > 0 && (
+                  <BranchPoint
+                    alternateBranches={alternateBranches}
+                    onSelectBranch={onSelectBranch}
+                  />
+                )}
+              </div>
+            );
+          })
         )}
 
         {/* Streaming assistant response */}
