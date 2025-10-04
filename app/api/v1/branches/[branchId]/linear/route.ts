@@ -43,16 +43,19 @@ export async function GET(
     if (br.graph.userId !== owner.id) return Errors.forbidden();
 
     // Walk follows from root or cursor forward, skipping deleted/hidden
+    // Use explicit sequence tracking for deterministic chronological order
     const haveCursor = Boolean(cursorNodeId);
-    const sql = `with recursive walk(id) as (
-        select $1::text as id
+    const sql = `with recursive walk(id, seq) as (
+        select $1::text as id, 0 as seq
         union all
-        select e."childNodeId" from walk
+        select e."childNodeId", walk.seq + 1
+        from walk
         join "BlockEdge" e on e."parentNodeId" = walk.id
         where e."graphId" = $2 and e."relation" = 'follows' and e."deletedAt" is null
       )
       select id as "nodeId" from walk
       ${haveCursor ? "where id >= $3" : ""}
+      order by seq
       limit ${haveCursor ? "$4" : "$3"}`;
     const paramsArr = haveCursor
       ? [br.rootNodeId, br.graphId, cursorNodeId, limit + 1]
