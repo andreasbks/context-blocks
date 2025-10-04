@@ -31,6 +31,7 @@ type GraphListItem = z.infer<typeof GraphsListResponse>["items"][number];
 type GraphDetail = z.infer<typeof GraphDetailResponse>;
 type Branch = z.infer<typeof GraphDetailResponse>["branches"][number];
 type TimelineItem = z.infer<typeof LinearResponse>["items"][number];
+type LinearQueryData = z.infer<typeof LinearResponse>;
 type ContextBlock = z.infer<typeof ContextBlockSchema>;
 
 // Helper to safely extract text from block content
@@ -59,8 +60,8 @@ export default function DashboardClient() {
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [composer, setComposer] = useState("");
-  const [isSending, setIsSending] = useState(false);
   const [streamingAssistant, setStreamingAssistant] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const qc = useQueryClient();
 
@@ -93,10 +94,15 @@ export default function DashboardClient() {
   });
 
   // Select the first branch when graph changes
+  // CRITICAL: Always reset to first branch when graph data changes
+  // This ensures we don't carry over branchId from a different graph
   useEffect(() => {
     const first = graphDetailQuery.data?.branches?.[0];
-    if (first) setSelectedBranchId((prev) => (prev ? prev : first.id));
-    else setSelectedBranchId(null);
+    if (first) {
+      setSelectedBranchId(first.id);
+    } else {
+      setSelectedBranchId(null);
+    }
   }, [graphDetailQuery.data]);
 
   const linearQuery = useQuery({
@@ -115,7 +121,7 @@ export default function DashboardClient() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [linearQuery.data, streamingAssistant, isSending]);
+  }, [linearQuery.data, streamingAssistant]);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 h-[calc(100vh-8rem)]">
@@ -221,24 +227,15 @@ export default function DashboardClient() {
                 ))
               )}
 
-              {isSending && (
-                <div className="rounded-md border p-3 opacity-80">
-                  <Label className="text-xs mb-1 block text-muted-foreground">
-                    User
-                  </Label>
-                  <div className="whitespace-pre-wrap leading-relaxed">
-                    {composer}
-                  </div>
-                </div>
-              )}
+              {/* Streaming assistant response - shown while generating */}
               {streamingAssistant && (
-                <div className="rounded-md border p-3">
+                <div className="rounded-md border p-3 bg-accent/30">
                   <Label className="text-xs mb-1 block text-muted-foreground">
                     Assistant
                   </Label>
                   <div className="whitespace-pre-wrap leading-relaxed">
                     {streamingAssistant}
-                    <span className="animate-pulse">▍</span>
+                    <span className="animate-pulse ml-1">▍</span>
                   </div>
                 </div>
               )}
@@ -249,47 +246,162 @@ export default function DashboardClient() {
               className="border-t pt-3 mt-3 space-y-2"
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (!selectedBranchId) return;
+                if (!selectedBranchId || !selectedGraphId) return;
+
                 const text = composer.trim();
                 if (!text) return;
+
+                const capturedBranchId = selectedBranchId;
+                const capturedGraphId = selectedGraphId;
+
                 const current = graphDetailQuery.data?.branches.find(
-                  (b) => b.id === selectedBranchId
+                  (b) => b.id === capturedBranchId
                 );
                 const expectedVersion = current?.version;
-                setIsSending(true);
+
+                // Generate optimistic IDs
+                const optimisticUserNodeId = `optimistic-user-${Date.now()}`;
+                const optimisticAssistantNodeId = `optimistic-assistant-${Date.now()}`;
+
+                // Clear composer immediately for better UX
+                setComposer("");
+                setIsStreaming(true);
                 setStreamingAssistant("");
+
+                // Create optimistic user message
+                const optimisticUserItem: TimelineItem = {
+                  nodeId: optimisticUserNodeId,
+                  block: {
+                    id: optimisticUserNodeId,
+                    kind: "user",
+                    content: { text },
+                    public: false,
+                    createdAt: new Date().toISOString(),
+                  },
+                };
+
+                // Add optimistic user message to cache immediately
+                const queryKey = QUERY_KEYS.branchLinear(
+                  capturedBranchId,
+                  true
+                );
+                qc.setQueryData<LinearQueryData>(queryKey, (old) => {
+                  if (!old?.items) return old;
+                  return {
+                    ...old,
+                    items: [...old.items, optimisticUserItem],
+                  };
+                });
+
                 try {
                   await sendStream({
-                    branchId: selectedBranchId,
+                    branchId: capturedBranchId,
                     userText: text,
                     expectedVersion: expectedVersion ?? undefined,
-                    onDelta: (t) =>
-                      setStreamingAssistant((prev) => (prev + t).slice(-8000)),
-                  });
-                } catch (err) {
-                  console.error("send stream error", err);
-                } finally {
-                  setIsSending(false);
-                  setComposer("");
-                  setStreamingAssistant("");
-                  if (selectedBranchId) {
-                    await Promise.all([
-                      qc.invalidateQueries({
+
+                    onDelta: (chunk) => {
+                      // Accumulate streaming assistant response
+                      setStreamingAssistant((prev) =>
+                        (prev + chunk).slice(-8000)
+                      );
+                    },
+
+                    onFinal: (data) => {
+                      // Stream complete - replace optimistic with real messages from backend
+                      // The final event contains BOTH user and assistant messages
+                      qc.setQueryData<LinearQueryData>(queryKey, (old) => {
+                        if (!old?.items) return old;
+
+                        // Remove optimistic user message and add real messages
+                        const withoutOptimistic = old.items.filter(
+                          (item) => item.nodeId !== optimisticUserNodeId
+                        );
+
+                        // Add all real messages from final event (user + assistant)
+                        const realMessages = data.items.map(
+                          (item) => item.item
+                        );
+
+                        return {
+                          ...old,
+                          items: [...withoutOptimistic, ...realMessages],
+                        };
+                      });
+
+                      // Update graph detail with new version (use captured IDs)
+                      if (data.version !== undefined) {
+                        qc.setQueryData<GraphDetail>(
+                          QUERY_KEYS.graphDetail(capturedGraphId),
+                          (old) => {
+                            if (!old?.branches) return old;
+                            return {
+                              ...old,
+                              branches: old.branches.map((b) =>
+                                b.id === capturedBranchId
+                                  ? {
+                                      ...b,
+                                      version: data.version,
+                                      tipNodeId: data.newTip,
+                                    }
+                                  : b
+                              ),
+                            };
+                          }
+                        );
+                      }
+
+                      setStreamingAssistant("");
+                      setIsStreaming(false);
+
+                      // CRITICAL: Use captured IDs to prevent cache contamination
+                      // if user switched branches/graphs during message send
+                      void qc.invalidateQueries({
                         queryKey: QUERY_KEYS.branchLinear(
-                          selectedBranchId,
+                          capturedBranchId,
                           true
                         ),
-                      }),
-                      selectedGraphId
-                        ? qc.invalidateQueries({
-                            queryKey: QUERY_KEYS.graphDetail(selectedGraphId),
-                          })
-                        : Promise.resolve(),
-                      qc.invalidateQueries({
+                      });
+
+                      // Also invalidate graphs list for lastActivityAt updates
+                      void qc.invalidateQueries({
                         queryKey: QUERY_KEYS.graphsList(),
-                      }),
-                    ]);
-                  }
+                      });
+                    },
+
+                    onError: (error) => {
+                      console.error("Stream error:", error);
+                      // Remove optimistic messages on error
+                      qc.setQueryData<LinearQueryData>(queryKey, (old) => {
+                        if (!old?.items) return old;
+                        return {
+                          ...old,
+                          items: old.items.filter(
+                            (item) =>
+                              item.nodeId !== optimisticUserNodeId &&
+                              item.nodeId !== optimisticAssistantNodeId
+                          ),
+                        };
+                      });
+                      setStreamingAssistant("");
+                      setIsStreaming(false);
+                      // TODO: Show error toast to user
+                    },
+                  });
+                } catch (err) {
+                  console.error("Send stream error:", err);
+                  // Remove optimistic message on error
+                  qc.setQueryData<LinearQueryData>(queryKey, (old) => {
+                    if (!old?.items) return old;
+                    return {
+                      ...old,
+                      items: old.items.filter(
+                        (item) => item.nodeId !== optimisticUserNodeId
+                      ),
+                    };
+                  });
+                  setStreamingAssistant("");
+                  setIsStreaming(false);
+                  // TODO: Show error toast to user
                 }
               }}
             >
@@ -300,14 +412,16 @@ export default function DashboardClient() {
                   setComposer(e.target.value)
                 }
                 rows={3}
-                disabled={!selectedBranchId || isSending}
+                disabled={!selectedBranchId || isStreaming}
               />
               <div className="flex justify-end">
                 <Button
                   type="submit"
-                  disabled={!composer.trim() || !selectedBranchId || isSending}
+                  disabled={
+                    !composer.trim() || !selectedBranchId || isStreaming
+                  }
                 >
-                  {isSending ? "Sending…" : "Send"}
+                  {isStreaming ? "Sending…" : "Send"}
                 </Button>
               </div>
             </form>
@@ -403,11 +517,19 @@ async function sendStream({
   userText,
   expectedVersion,
   onDelta,
+  onFinal,
+  onError,
 }: {
   branchId: string;
   userText: string;
   expectedVersion?: number;
   onDelta?: (chunk: string) => void;
+  onFinal?: (data: {
+    items: Array<{ role: "user" | "assistant"; item: TimelineItem }>;
+    newTip?: string;
+    version?: number;
+  }) => void;
+  onError?: (error: { code: string; message: string }) => void;
 }) {
   const res = await fetch(`/api/v1/branches/${branchId}/send/stream`, {
     method: "POST",
@@ -421,33 +543,61 @@ async function sendStream({
       expectedVersion,
     }),
   });
+
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
+
     buffer += decoder.decode(value, { stream: true });
     let idx;
+
     while ((idx = buffer.indexOf("\n\n")) !== -1) {
       const chunk = buffer.slice(0, idx);
       buffer = buffer.slice(idx + 2);
       const lines = chunk.split("\n");
+
       let event: string | null = null;
       let data = "";
+
       for (const line of lines) {
         if (line.startsWith("event:")) event = line.slice(6).trim();
         else if (line.startsWith("data:")) data += line.slice(5).trim();
       }
-      if (!event) continue;
-      if (event === "delta" && data) {
-        try {
-          const parsed = JSON.parse(data) as { text?: string };
-          if (parsed.text && onDelta) onDelta(parsed.text);
-        } catch {}
+
+      if (!event || !data) continue;
+
+      try {
+        const parsed = JSON.parse(data);
+
+        switch (event) {
+          case "delta":
+            // Streaming assistant response chunk
+            if (parsed.text && onDelta) onDelta(parsed.text);
+            break;
+
+          case "final":
+            // Stream complete with all items
+            if (onFinal) onFinal(parsed);
+            break;
+
+          case "error":
+            // Error from backend
+            if (onError) onError(parsed.error || parsed);
+            throw new Error(parsed.error?.message || "Stream error");
+
+          case "keepalive":
+            // Heartbeat - ignore
+            break;
+        }
+      } catch (parseError) {
+        console.error("Failed to parse SSE event:", event, data, parseError);
       }
-      // item and final are persisted server-side; UI will refetch
     }
   }
 }
