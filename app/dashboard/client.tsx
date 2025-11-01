@@ -32,6 +32,12 @@ async function fetchJson<T>(
   return (await res.json()) as T;
 }
 
+interface ForkContext {
+  nodeId: string;
+  branchName: string;
+  messageText: string;
+}
+
 export default function DashboardClient() {
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
@@ -44,6 +50,8 @@ export default function DashboardClient() {
     branchId: string;
     version?: number;
   } | null>(null);
+  const [forkContext, setForkContext] = useState<ForkContext | null>(null);
+  const [forkComposer, setForkComposer] = useState("");
 
   // Queries
   const graphsQuery = useQuery({
@@ -207,6 +215,57 @@ export default function DashboardClient() {
     }
   };
 
+  // Handle start fork - create fork context
+  const handleStartFork = (nodeId: string, messageText: string) => {
+    const branchCount = (graphDetailQuery.data?.branches ?? []).length;
+    const branchName =
+      messageText.length > 0
+        ? `Branch from ${messageText.slice(0, 20)}${messageText.length > 20 ? "..." : ""}`
+        : `Branch #${branchCount + 1}`;
+
+    setForkContext({
+      nodeId,
+      branchName,
+      messageText,
+    });
+    setForkComposer("");
+  };
+
+  // Handle cancel fork
+  const handleCancelFork = () => {
+    setForkContext(null);
+    setForkComposer("");
+  };
+
+  // Handle submit fork - create branch with first message
+  const handleSubmitFork = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forkContext || !selectedBranchId || !selectedGraphId) return;
+
+    const text = forkComposer.trim();
+    if (!text) return;
+
+    const current = graphDetailQuery.data?.branches.find(
+      (b) => b.id === selectedBranchId
+    );
+    const expectedVersion = current?.version;
+
+    // Call sendMessage with fork parameters
+    const result = await chat.sendMessage(text, expectedVersion, {
+      forkFromNodeId: forkContext.nodeId,
+      newBranchName: forkContext.branchName,
+    });
+
+    // Clear fork context after successful submission
+    setForkContext(null);
+    setForkComposer("");
+
+    // Switch to the new branch if it was created
+    if (result?.newBranchId) {
+      setSelectedBranchId(result.newBranchId);
+    }
+  };
+
   return (
     <div className="relative flex h-[calc(100vh-4rem)] w-full overflow-hidden">
       {/* Sidebar */}
@@ -244,6 +303,12 @@ export default function DashboardClient() {
             isStreaming={chat.isStreaming || isCreationStreaming}
             scrollRef={chat.scrollRef}
             onSubmit={handleSubmit}
+            forkContext={forkContext}
+            onStartFork={handleStartFork}
+            onCancelFork={handleCancelFork}
+            forkComposer={forkComposer}
+            setForkComposer={setForkComposer}
+            onSubmitFork={handleSubmitFork}
           />
         </div>
       </main>

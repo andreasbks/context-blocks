@@ -35,8 +35,12 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
 
   const sendMessage = async (
     text: string,
-    expectedVersion: number | undefined
-  ) => {
+    expectedVersion: number | undefined,
+    forkParams?: {
+      forkFromNodeId: string;
+      newBranchName: string;
+    }
+  ): Promise<{ newBranchId?: string } | undefined> => {
     if (!branchId || !graphId) return;
 
     const capturedBranchId = branchId;
@@ -49,6 +53,8 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
     setComposer("");
     setIsStreaming(true);
     setStreamingAssistant("");
+
+    let newBranchId: string | undefined;
 
     // Create optimistic user message
     const optimisticUserItem: TimelineItem = {
@@ -77,6 +83,8 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
         branchId: capturedBranchId,
         userText: text,
         expectedVersion,
+        forkFromNodeId: forkParams?.forkFromNodeId,
+        newBranchName: forkParams?.newBranchName,
 
         onDelta: (chunk) => {
           // Accumulate streaming assistant response
@@ -84,44 +92,71 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
         },
 
         onFinal: (data) => {
-          // Stream complete - replace optimistic with real messages from backend
-          qc.setQueryData<LinearQueryData>(queryKey, (old) => {
-            if (!old?.items) return old;
+          // If this was a fork operation, we got a new branch back
+          if (data.branch) {
+            newBranchId = data.branch.id;
 
-            // Remove optimistic user message and add real messages
-            const withoutOptimistic = old.items.filter(
-              (item) => item.nodeId !== optimisticUserNodeId
-            );
-
-            // Add all real messages from final event (user + assistant)
-            const realMessages = data.items.map((item) => item.item);
-
-            return {
-              ...old,
-              items: [...withoutOptimistic, ...realMessages],
-            };
-          });
-
-          // Update graph detail with new version
-          if (data.version !== undefined) {
+            // Add new branch to GraphDetail cache
             qc.setQueryData<GraphDetail>(
               QUERY_KEYS.graphDetail(capturedGraphId),
               (old) => {
                 if (!old?.branches) return old;
                 return {
                   ...old,
-                  branches: old.branches.map((b) =>
-                    b.id === capturedBranchId
-                      ? {
-                          ...b,
-                          version: data.version,
-                          tipNodeId: data.newTip,
-                        }
-                      : b
-                  ),
+                  branches: [...old.branches, data.branch!],
                 };
               }
             );
+
+            // Create initial linear query data for the new branch
+            const realMessages = data.items.map((item) => item.item);
+            qc.setQueryData<LinearQueryData>(
+              QUERY_KEYS.branchLinear(data.branch.id, true),
+              {
+                items: realMessages,
+                nextCursor: null,
+              }
+            );
+          } else {
+            // Normal append (not a fork) - update existing branch
+            qc.setQueryData<LinearQueryData>(queryKey, (old) => {
+              if (!old?.items) return old;
+
+              // Remove optimistic user message and add real messages
+              const withoutOptimistic = old.items.filter(
+                (item) => item.nodeId !== optimisticUserNodeId
+              );
+
+              // Add all real messages from final event (user + assistant)
+              const realMessages = data.items.map((item) => item.item);
+
+              return {
+                ...old,
+                items: [...withoutOptimistic, ...realMessages],
+              };
+            });
+
+            // Update graph detail with new version
+            if (data.version !== undefined) {
+              qc.setQueryData<GraphDetail>(
+                QUERY_KEYS.graphDetail(capturedGraphId),
+                (old) => {
+                  if (!old?.branches) return old;
+                  return {
+                    ...old,
+                    branches: old.branches.map((b) =>
+                      b.id === capturedBranchId
+                        ? {
+                            ...b,
+                            version: data.version,
+                            tipNodeId: data.newTip,
+                          }
+                        : b
+                    ),
+                  };
+                }
+              );
+            }
           }
 
           setStreamingAssistant("");
@@ -131,15 +166,6 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
           void qc.invalidateQueries({
             queryKey: ["quota"],
           });
-
-          /* Invalidate queries to refresh data
-          void qc.invalidateQueries({
-            queryKey: QUERY_KEYS.branchLinear(capturedBranchId, true),
-          });
-          void qc.invalidateQueries({
-            queryKey: QUERY_KEYS.graphsList(),
-          });
-          */
         },
 
         onError: (error) => {
@@ -171,6 +197,8 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
           setIsStreaming(false);
         },
       });
+
+      return { newBranchId };
     } catch (err) {
       console.error("Send stream error:", err);
 
@@ -191,6 +219,8 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
       });
       setStreamingAssistant("");
       setIsStreaming(false);
+
+      return undefined;
     }
   };
 
@@ -208,6 +238,8 @@ async function sendStream({
   branchId,
   userText,
   expectedVersion,
+  forkFromNodeId,
+  newBranchName,
   onDelta,
   onFinal,
   onError,
@@ -215,14 +247,39 @@ async function sendStream({
   branchId: string;
   userText: string;
   expectedVersion?: number;
+  forkFromNodeId?: string;
+  newBranchName?: string;
   onDelta?: (chunk: string) => void;
   onFinal?: (data: {
     items: Array<{ role: "user" | "assistant"; item: TimelineItem }>;
     newTip?: string;
     version?: number;
+    branch?: {
+      id: string;
+      graphId: string;
+      name: string;
+      rootNodeId: string;
+      tipNodeId: string;
+      version: number;
+    };
   }) => void;
   onError?: (error: { code: string; message: string }) => void;
 }) {
+  const body: {
+    userMessage: { text: string };
+    expectedVersion?: number;
+    forkFromNodeId?: string;
+    newBranchName?: string;
+  } = {
+    userMessage: { text: userText },
+    expectedVersion,
+  };
+
+  if (forkFromNodeId) {
+    body.forkFromNodeId = forkFromNodeId;
+    body.newBranchName = newBranchName;
+  }
+
   const res = await fetch(`/api/v1/branches/${branchId}/send/stream`, {
     method: "POST",
     headers: {
@@ -230,10 +287,7 @@ async function sendStream({
       Accept: "text/event-stream",
       "Idempotency-Key": crypto.randomUUID(),
     },
-    body: JSON.stringify({
-      userMessage: { text: userText },
-      expectedVersion,
-    }),
+    body: JSON.stringify(body),
   });
 
   // Handle quota exceeded error (429 status)
