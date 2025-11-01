@@ -126,6 +126,11 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
           setStreamingAssistant("");
           setIsStreaming(false);
 
+          // Invalidate quota query to reflect updated token usage
+          void qc.invalidateQueries({
+            queryKey: ["quota"],
+          });
+
           /* Invalidate queries to refresh data
           void qc.invalidateQueries({
             queryKey: QUERY_KEYS.branchLinear(capturedBranchId, true),
@@ -211,6 +216,29 @@ async function sendStream({
     }),
   });
 
+  // Handle quota exceeded error (429 status)
+  if (res.status === 429) {
+    const errorData = await res.json().catch(() => ({}));
+    const resetDate = errorData?.error?.details?.resetDate
+      ? new Date(errorData.error.details.resetDate).toLocaleDateString(
+          "en-US",
+          {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }
+        )
+      : "soon";
+
+    const quotaError = {
+      code: "QUOTA_EXCEEDED",
+      message: `You've reached your monthly token limit. Your quota will reset on ${resetDate}.`,
+    };
+
+    if (onError) onError(quotaError);
+    throw new Error(quotaError.message);
+  }
+
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
   const reader = res.body.getReader();
@@ -252,6 +280,26 @@ async function sendStream({
             break;
 
           case "error":
+            // Handle quota exceeded error with user-friendly message
+            if (parsed.error?.code === "QUOTA_EXCEEDED") {
+              const resetDate = parsed.error?.details?.resetDate
+                ? new Date(parsed.error.details.resetDate).toLocaleDateString(
+                    "en-US",
+                    {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    }
+                  )
+                : "soon";
+              const quotaError = {
+                code: "QUOTA_EXCEEDED",
+                message: `You've reached your monthly token limit. Your quota will reset on ${resetDate}.`,
+              };
+              if (onError) onError(quotaError);
+              throw new Error(quotaError.message);
+            }
+
             if (onError) onError(parsed.error || parsed);
             throw new Error(parsed.error?.message || "Stream error");
 

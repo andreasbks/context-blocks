@@ -7,6 +7,7 @@ import {
   getCachedIdempotentResponse,
 } from "@/lib/api/idempotency";
 import { createRequestLogger } from "@/lib/api/logger";
+import { checkQuota, recordTokenUsage } from "@/lib/api/quota";
 import { acquireSSESlot, checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { BranchIdParam } from "@/lib/api/schemas/queries";
 import { GenerateStreamBody } from "@/lib/api/schemas/requests";
@@ -91,6 +92,30 @@ export async function POST(
     );
     if (slotOrRes instanceof Response) return slotOrRes;
     slot = slotOrRes;
+
+    // Check quota before processing request
+    const quotaStatus = await checkQuota(owner.id);
+    if (quotaStatus.remaining <= 0) {
+      return new Response(
+        JSON.stringify(
+          ErrorEnvelopeSchema.parse({
+            error: {
+              code: "QUOTA_EXCEEDED",
+              message: "Monthly token quota exceeded",
+              details: {
+                used: quotaStatus.used,
+                limit: quotaStatus.limit,
+                resetDate: quotaStatus.resetDate,
+              },
+            },
+          })
+        ),
+        {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // Check idempotency replay for SSE: if final cached, emit final and close
     const cached = await getCachedIdempotentResponse(req, owner.id);
@@ -342,6 +367,11 @@ export async function POST(
           );
           await sse.writer.close();
           return;
+        }
+
+        // Record token usage for quota tracking
+        if (effectiveTokenCount && effectiveTokenCount > 0) {
+          await recordTokenUsage(owner.id, effectiveTokenCount);
         }
 
         // Unified final envelope: items array (assistant-only for generate)

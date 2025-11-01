@@ -1,9 +1,16 @@
+"use client";
+
 import Link from "next/link";
 
+import { useAuth } from "@clerk/nextjs";
+
 import { AuthButton } from "../auth/auth-button";
+import { QuotaIndicator } from "../dashboard/quota-indicator";
 import { ThemeSwitcher } from "../theme-switcher";
 
 export default function Navbar() {
+  const { isSignedIn } = useAuth();
+
   return (
     <nav className="w-full flex justify-center border-b border-border/50 bg-background/95 backdrop-blur-sm h-16 fixed top-0 z-40">
       <div className="w-full max-w-7xl flex justify-between items-center px-6 text-sm">
@@ -16,6 +23,7 @@ export default function Navbar() {
           </Link>
         </div>
         <div className="flex items-center gap-4">
+          {isSignedIn && <QuotaIndicator />}
           <ThemeSwitcher />
           <AuthButton />
         </div>
