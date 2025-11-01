@@ -30,8 +30,6 @@ interface SidebarProps {
   onSelectGraph: (graphId: string) => void;
   onGraphCreated?: (data: z.infer<typeof StartGraphResponse>) => void;
   onGraphDeleted?: (graphId: string) => void;
-  onStreamDelta?: (chunk: string) => void;
-  onStreamComplete?: () => void;
 }
 
 const ExpandIcon = () => <span className="text-xl">→</span>;
@@ -48,8 +46,6 @@ export function Sidebar({
   onSelectGraph,
   onGraphCreated,
   onGraphDeleted,
-  onStreamDelta,
-  onStreamComplete,
 }: SidebarProps) {
   const [search, setSearch] = useState("");
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
@@ -82,8 +78,6 @@ export function Sidebar({
           onGraphCreated(data);
         }
       },
-      onStreamDelta,
-      onStreamComplete,
     });
   };
 

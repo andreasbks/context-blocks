@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -46,6 +48,18 @@ export function NewSessionDialog({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Submit on Cmd+Enter or Ctrl+Enter
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      const trimmed = message.trim();
+      if (trimmed && !isCreating) {
+        onSubmit(trimmed);
+        setMessage("");
+      }
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -62,10 +76,17 @@ export function NewSessionDialog({
               placeholder="Type your first message here..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="min-h-[120px] resize-none"
               disabled={isCreating}
               autoFocus
             />
+            {isCreating && (
+              <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Creating your session...</span>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -77,7 +98,14 @@ export function NewSessionDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!message.trim() || isCreating}>
-              {isCreating ? "Creating..." : "Start Session"}
+              {isCreating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Start Session"
+              )}
             </Button>
           </DialogFooter>
         </form>
