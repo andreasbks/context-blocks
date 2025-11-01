@@ -131,3 +131,12 @@ model IdempotencyRequest {
   @@unique([userId, method, path, key])
   @@index([createdAt])
 }
+
+model TokenUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  tokens    Int
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
