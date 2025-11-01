@@ -131,3 +131,8 @@ export const NodeRefsResponse = z.object({
 export const EnsureBlockResponse = z.object({
   block: ContextBlockSchema,
 });
+
+export const DeleteGraphResponse = z.object({
+  graphId: z.string(),
+  deletedAt: z.string(),
+});
