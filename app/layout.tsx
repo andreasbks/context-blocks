@@ -4,6 +4,7 @@ import { Geist } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "next-themes";
 
+import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/lib/providers/query-provider";
 
 import Navbar from "../components/ui/navbar";
@@ -62,6 +63,7 @@ export default function RootLayout({
                   {children}
                 </main>
               </div>
+              <Toaster />
             </ThemeProvider>
           </QueryProvider>
         </ClerkProvider>

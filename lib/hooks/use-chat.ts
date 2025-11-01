@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { z } from "zod";
 
 import {
@@ -143,6 +144,19 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
 
         onError: (error) => {
           console.error("Stream error:", error);
+
+          // Show user-friendly toast notification
+          if (error.code === "QUOTA_EXCEEDED") {
+            toast.error("Monthly token limit reached", {
+              description: error.message,
+              duration: 5000,
+            });
+          } else {
+            toast.error("Failed to send message", {
+              description: error.message || "Please try again.",
+            });
+          }
+
           // Remove optimistic messages on error
           qc.setQueryData<LinearQueryData>(queryKey, (old) => {
             if (!old?.items) return old;
@@ -159,6 +173,12 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
       });
     } catch (err) {
       console.error("Send stream error:", err);
+
+      // Show error toast
+      toast.error("Failed to send message", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+
       // Remove optimistic message on error
       qc.setQueryData<LinearQueryData>(queryKey, (old) => {
         if (!old?.items) return old;
@@ -236,10 +256,14 @@ async function sendStream({
     };
 
     if (onError) onError(quotaError);
-    throw new Error(quotaError.message);
+    return; // Exit without throwing to avoid duplicate error handling
   }
 
-  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok || !res.body) {
+    const error = { code: "HTTP_ERROR", message: `HTTP ${res.status}` };
+    if (onError) onError(error);
+    return;
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -297,11 +321,11 @@ async function sendStream({
                 message: `You've reached your monthly token limit. Your quota will reset on ${resetDate}.`,
               };
               if (onError) onError(quotaError);
-              throw new Error(quotaError.message);
+              return; // Exit without throwing to avoid duplicate error handling
             }
 
             if (onError) onError(parsed.error || parsed);
-            throw new Error(parsed.error?.message || "Stream error");
+            return; // Exit without throwing to avoid duplicate error handling
 
           case "keepalive":
             break;

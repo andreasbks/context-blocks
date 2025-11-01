@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 
-const QUOTA_LIMIT = 1000; // 10,000 output tokens per 30 days
+const QUOTA_LIMIT = 100000;
 const QUOTA_WINDOW_DAYS = 30;
 
 export interface QuotaStatus {

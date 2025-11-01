@@ -7,6 +7,7 @@ export type ErrorCode =
   | "CONFLICT_TIP_MOVED"
   | "CANNOT_DELETE_BRANCH_ROOT"
   | "IDEMPOTENCY_REPLAY"
+  | "QUOTA_EXCEEDED"
   | "RATE_LIMITED"
   | "INTERNAL";
 
@@ -25,6 +26,7 @@ export function jsonError(
     CONFLICT_TIP_MOVED: 409,
     CANNOT_DELETE_BRANCH_ROOT: 409,
     IDEMPOTENCY_REPLAY: 200,
+    QUOTA_EXCEEDED: 429,
     RATE_LIMITED: 429,
     INTERNAL: 500,
   };
@@ -54,6 +56,23 @@ export const Errors = {
         headers: {
           "Content-Type": "application/json",
           "Retry-After": String(retryAfterSeconds),
+        },
+      }
+    ),
+  quotaExceeded: (resetDate: string, used: number, limit: number) =>
+    new Response(
+      JSON.stringify({
+        error: {
+          code: "QUOTA_EXCEEDED",
+          message: "Monthly token quota exceeded",
+          details: { resetDate, used, limit },
+        },
+      }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": "3600",
         },
       }
     ),

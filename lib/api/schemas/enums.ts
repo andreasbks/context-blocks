@@ -15,6 +15,7 @@ export const ErrorCodeSchema = z.enum([
   "CONFLICT_TIP_MOVED",
   "CANNOT_DELETE_BRANCH_ROOT",
   "IDEMPOTENCY_REPLAY",
+  "QUOTA_EXCEEDED",
   "RATE_LIMITED",
   "INTERNAL",
 ]);
