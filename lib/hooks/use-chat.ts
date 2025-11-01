@@ -126,13 +126,14 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
           setStreamingAssistant("");
           setIsStreaming(false);
 
-          // Invalidate queries to refresh data
+          /* Invalidate queries to refresh data
           void qc.invalidateQueries({
             queryKey: QUERY_KEYS.branchLinear(capturedBranchId, true),
           });
           void qc.invalidateQueries({
             queryKey: QUERY_KEYS.graphsList(),
           });
+          */
         },
 
         onError: (error) => {

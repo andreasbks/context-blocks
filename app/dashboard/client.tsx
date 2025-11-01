@@ -74,13 +74,14 @@ export default function DashboardClient() {
 
   // Select the first branch when graph changes
   useEffect(() => {
-    const first = graphDetailQuery.data?.branches?.[0];
+    const branches = graphDetailQuery.data?.branches;
+    const first = branches?.[0];
     if (first) {
       setSelectedBranchId(first.id);
     } else {
       setSelectedBranchId(null);
     }
-  }, [graphDetailQuery.data]);
+  }, [graphDetailQuery.data?.branches, selectedGraphId]);
 
   // Auto-scroll when data changes
   useEffect(() => {

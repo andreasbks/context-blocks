@@ -318,6 +318,16 @@ export async function POST(
         // Final assistant commit
         const tx2Start = Date.now();
         const commitResult = await prisma.$transaction(async (tx) => {
+          // Fetch the branch again to get the updated tip (which is now the userNode)
+          const freshBranch = await tx.branch.findUnique({
+            where: { id: targetBranch.id },
+          });
+          if (!freshBranch?.tipNodeId) {
+            return {
+              error: Errors.validation("Branch tip missing after user append"),
+            };
+          }
+
           const block = await tx.contextBlock.create({
             data: {
               userId: owner.id,
@@ -336,7 +346,7 @@ export async function POST(
           await tx.blockEdge.create({
             data: {
               graphId: targetBranch.graphId,
-              parentNodeId: targetBranch.tipNodeId!,
+              parentNodeId: freshBranch.tipNodeId, // Use fresh tip (userNode), not stale targetBranch
               childNodeId: node.id,
               relation: "follows",
               ord: 0,
