@@ -11,14 +11,17 @@ import {
   GraphDetailResponse,
   GraphsListResponse,
   LinearResponse,
+  StartGraphResponse,
 } from "@/lib/api/schemas/responses";
 import { QUERY_KEYS } from "@/lib/constants/query-keys";
 import { useChat } from "@/lib/hooks/use-chat";
+import { useGenerateStream } from "@/lib/hooks/use-generate-stream";
 
 // Derive types from Zod schemas
 type GraphListItem = z.infer<typeof GraphsListResponse>["items"][number];
 type GraphDetail = z.infer<typeof GraphDetailResponse>;
 type TimelineItem = z.infer<typeof LinearResponse>["items"][number];
+type StartGraphResult = z.infer<typeof StartGraphResponse>;
 
 async function fetchJson<T>(
   input: RequestInfo,
@@ -33,6 +36,14 @@ export default function DashboardClient() {
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [creationStreamingAssistant, setCreationStreamingAssistant] =
+    useState("");
+  const [isCreationStreaming, setIsCreationStreaming] = useState(false);
+  const [pendingGenerate, setPendingGenerate] = useState<{
+    graphId: string;
+    branchId: string;
+    version?: number;
+  } | null>(null);
 
   // Queries
   const graphsQuery = useQuery({
@@ -72,6 +83,9 @@ export default function DashboardClient() {
     graphId: selectedGraphId,
   });
 
+  // Generate stream hook
+  const { generateStream } = useGenerateStream();
+
   // Select the first branch when graph changes
   useEffect(() => {
     const branches = graphDetailQuery.data?.branches;
@@ -83,12 +97,47 @@ export default function DashboardClient() {
     }
   }, [graphDetailQuery.data?.branches, selectedGraphId]);
 
+  // Trigger generate stream after new session UI is rendered
+  useEffect(() => {
+    if (!pendingGenerate) return;
+    if (!selectedBranchId) return;
+    if (selectedBranchId !== pendingGenerate.branchId) return;
+
+    // Wait for the linearQuery to be ready with the data
+    if (linearQuery.isLoading) return;
+    if (!linearQuery.data) return;
+
+    // Clear pending so we don't trigger again
+    const generateData = pendingGenerate;
+    setPendingGenerate(null);
+
+    // Now the UI is fully rendered, trigger the generate stream
+    void generateStream({
+      branchId: generateData.branchId,
+      graphId: generateData.graphId,
+      expectedVersion: generateData.version,
+      onStreamDelta: handleStreamDelta,
+      onStreamComplete: handleStreamComplete,
+    });
+  }, [
+    pendingGenerate,
+    selectedBranchId,
+    linearQuery.isLoading,
+    linearQuery.data,
+    generateStream,
+  ]);
+
   // Auto-scroll when data changes
   useEffect(() => {
     if (chat.scrollRef.current) {
       chat.scrollRef.current.scrollTop = chat.scrollRef.current.scrollHeight;
     }
-  }, [linearQuery.data, chat.streamingAssistant, chat.scrollRef]);
+  }, [
+    linearQuery.data,
+    chat.streamingAssistant,
+    creationStreamingAssistant,
+    chat.scrollRef,
+  ]);
 
   // Keyboard shortcut: Cmd/Ctrl + B to toggle sidebar
   useEffect(() => {
@@ -119,6 +168,45 @@ export default function DashboardClient() {
     await chat.sendMessage(text, expectedVersion);
   };
 
+  // Handle graph creation - auto-select the new graph and prepare to generate
+  const handleGraphCreated = (data: StartGraphResult) => {
+    setSelectedGraphId(data.graph.id);
+    setIsCreationStreaming(true);
+    setCreationStreamingAssistant("");
+    // Store the data needed to trigger generate after UI renders
+    setPendingGenerate({
+      graphId: data.graph.id,
+      branchId: data.branch.id,
+      version: data.branch.version,
+    });
+  };
+
+  // Handle streaming delta during graph creation
+  const handleStreamDelta = (chunk: string) => {
+    setCreationStreamingAssistant((prev) => (prev + chunk).slice(-8000));
+  };
+
+  // Handle streaming complete during graph creation
+  const handleStreamComplete = () => {
+    setIsCreationStreaming(false);
+    setCreationStreamingAssistant("");
+  };
+
+  // Handle graph deletion - select another graph or clear selection
+  const handleGraphDeleted = (deletedGraphId: string) => {
+    if (selectedGraphId === deletedGraphId) {
+      // If the deleted graph was selected, select the first available graph
+      const graphs = graphsQuery.data?.items ?? [];
+      const remainingGraphs = graphs.filter((g) => g.id !== deletedGraphId);
+
+      if (remainingGraphs.length > 0) {
+        setSelectedGraphId(remainingGraphs[0].id);
+      } else {
+        setSelectedGraphId(null);
+      }
+    }
+  };
+
   return (
     <div className="relative flex h-[calc(100vh-4rem)] w-full overflow-hidden">
       {/* Sidebar */}
@@ -129,6 +217,8 @@ export default function DashboardClient() {
         graphsQuery={graphsQuery}
         selectedGraphId={selectedGraphId}
         onSelectGraph={setSelectedGraphId}
+        onGraphCreated={handleGraphCreated}
+        onGraphDeleted={handleGraphDeleted}
       />
 
       {/* Main Content Area - Centered Chat */}
@@ -148,8 +238,10 @@ export default function DashboardClient() {
             linearQuery={linearQuery}
             composer={chat.composer}
             setComposer={chat.setComposer}
-            streamingAssistant={chat.streamingAssistant}
-            isStreaming={chat.isStreaming}
+            streamingAssistant={
+              chat.streamingAssistant || creationStreamingAssistant
+            }
+            isStreaming={chat.isStreaming || isCreationStreaming}
             scrollRef={chat.scrollRef}
             onSubmit={handleSubmit}
           />

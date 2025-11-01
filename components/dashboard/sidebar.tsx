@@ -3,11 +3,18 @@
 import { useMemo, useState } from "react";
 
 import { UseQueryResult } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
 import { z } from "zod";
 
+import { DeleteGraphDialog } from "@/components/dashboard/delete-graph-dialog";
+import { NewSessionDialog } from "@/components/dashboard/new-session-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { GraphsListResponse } from "@/lib/api/schemas/responses";
+import {
+  GraphsListResponse,
+  StartGraphResponse,
+} from "@/lib/api/schemas/responses";
+import { useGraphMutations } from "@/lib/hooks/use-graph-mutations";
 
 type GraphListItem = z.infer<typeof GraphsListResponse>["items"][number];
 
@@ -21,6 +28,8 @@ interface SidebarProps {
   >;
   selectedGraphId: string | null;
   onSelectGraph: (graphId: string) => void;
+  onGraphCreated?: (data: z.infer<typeof StartGraphResponse>) => void;
+  onGraphDeleted?: (graphId: string) => void;
 }
 
 const ExpandIcon = () => <span className="text-xl">→</span>;
@@ -35,8 +44,20 @@ export function Sidebar({
   graphsQuery,
   selectedGraphId,
   onSelectGraph,
+  onGraphCreated,
+  onGraphDeleted,
 }: SidebarProps) {
   const [search, setSearch] = useState("");
+  const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [graphToDelete, setGraphToDelete] = useState<{
+    id: string;
+    title: string | null;
+  } | null>(null);
+  const [hoveredGraphId, setHoveredGraphId] = useState<string | null>(null);
+
+  const { createGraph, deleteGraph, isCreating, isDeleting } =
+    useGraphMutations();
 
   const filteredGraphs = useMemo(() => {
     const items = graphsQuery.data?.items ?? [];
@@ -46,6 +67,42 @@ export function Sidebar({
       (g.title ?? "untitled").toLowerCase().includes(q)
     );
   }, [graphsQuery.data, search]);
+
+  const handleCreateGraph = (firstMessage: string) => {
+    createGraph({
+      title: "Untitled Session",
+      firstMessage,
+      onSuccess: (data) => {
+        setNewSessionDialogOpen(false);
+        if (onGraphCreated) {
+          onGraphCreated(data);
+        }
+      },
+    });
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, graph: GraphListItem) => {
+    e.stopPropagation();
+    setGraphToDelete({
+      id: graph.id,
+      title: graph.title ?? null,
+    });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (graphToDelete) {
+      deleteGraph({
+        graphId: graphToDelete.id,
+        onSuccess: () => {
+          if (onGraphDeleted) {
+            onGraphDeleted(graphToDelete.id);
+          }
+        },
+      });
+      setGraphToDelete(null);
+    }
+  };
 
   return (
     <>
@@ -112,10 +169,8 @@ export function Sidebar({
           <Button
             className="w-full mb-4 font-semibold"
             size="lg"
-            onClick={() => {
-              // TODO: Open new session modal
-              console.log("New session");
-            }}
+            onClick={() => setNewSessionDialogOpen(true)}
+            disabled={isCreating}
           >
             <PlusIcon />
             <span className="ml-2">New Session</span>
@@ -133,33 +188,74 @@ export function Sidebar({
               </div>
             ) : (
               filteredGraphs.map((g) => (
-                <button
+                <div
                   key={g.id}
-                  onClick={() => onSelectGraph(g.id)}
-                  className={`
-                  w-full text-left px-4 py-3 rounded-lg
-                  transition-all duration-200
-                  ${
-                    selectedGraphId === g.id
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "hover:bg-accent/50 text-foreground"
-                  }
-                `}
+                  className="relative"
+                  onMouseEnter={() => setHoveredGraphId(g.id)}
+                  onMouseLeave={() => setHoveredGraphId(null)}
                 >
-                  <div className="font-medium truncate mb-1">
-                    {g.title ?? "Untitled Session"}
-                  </div>
-                  <div className="text-xs opacity-70">
-                    {g.lastActivityAt
-                      ? new Date(g.lastActivityAt).toLocaleDateString()
-                      : "Recently"}
-                  </div>
-                </button>
+                  <button
+                    onClick={() => onSelectGraph(g.id)}
+                    className={`
+                    w-full text-left px-4 py-3 rounded-lg
+                    transition-all duration-200
+                    ${
+                      selectedGraphId === g.id
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "hover:bg-accent/50 text-foreground"
+                    }
+                  `}
+                  >
+                    <div className="font-medium truncate mb-1 pr-8">
+                      {g.title ?? "Untitled Session"}
+                    </div>
+                    <div className="text-xs opacity-70">
+                      {g.lastActivityAt
+                        ? new Date(g.lastActivityAt).toLocaleDateString()
+                        : "Recently"}
+                    </div>
+                  </button>
+                  {hoveredGraphId === g.id && (
+                    <button
+                      onClick={(e) => handleDeleteClick(e, g)}
+                      className={`
+                        absolute right-2 top-1/2 -translate-y-1/2
+                        p-2 rounded-md
+                        transition-colors duration-200
+                        ${
+                          selectedGraphId === g.id
+                            ? "hover:bg-primary-foreground/20 text-primary-foreground"
+                            : "hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                        }
+                      `}
+                      aria-label="Delete session"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               ))
             )}
           </div>
         </div>
       </aside>
+
+      {/* New Session Dialog */}
+      <NewSessionDialog
+        open={newSessionDialogOpen}
+        onOpenChange={setNewSessionDialogOpen}
+        onSubmit={handleCreateGraph}
+        isCreating={isCreating}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteGraphDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        graphTitle={graphToDelete?.title ?? null}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={isDeleting}
+      />
     </>
   );
 }
