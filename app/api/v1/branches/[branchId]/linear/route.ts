@@ -42,25 +42,52 @@ export async function GET(
     if (!br) return Errors.notFound("Branch");
     if (br.graph.userId !== owner.id) return Errors.forbidden();
 
-    // Walk follows from root or cursor forward, skipping deleted/hidden
-    const haveCursor = Boolean(cursorNodeId);
-    const sql = `with recursive walk(id) as (
-        select $1::text as id
+    // Walk backwards from tip to beginning of conversation
+    // This ensures we only get nodes on THIS branch's specific path (no sibling branches)
+    // Shared history before the fork is INCLUDED (that's the expected behavior)
+    if (!br.tipNodeId) {
+      // Empty branch (no tip yet)
+      return validateAndSend(
+        { items: [], nextCursor: null },
+        LinearResponse,
+        200
+      );
+    }
+
+    // Backtrack from tip following the 'follows' edges backwards to the conversation start
+    // This matches the context-building algorithm and gives the full conversation history
+    const backtrackSql = `
+      with recursive backtrack(id, depth) as (
+        select $1::text as id, 0 as depth
         union all
-        select e."childNodeId" from walk
-        join "BlockEdge" e on e."parentNodeId" = walk.id
-        where e."graphId" = $2 and e."relation" = 'follows' and e."deletedAt" is null
+        select e."parentNodeId", backtrack.depth + 1
+        from backtrack
+        join "BlockEdge" e on e."childNodeId" = backtrack.id
+        join "GraphNode" pn on pn.id = e."parentNodeId"
+        where e."graphId" = $2 
+          and e."relation" = 'follows' 
+          and e."deletedAt" is null
+          and pn."hiddenAt" is null
+          and backtrack.depth < 200
       )
-      select id as "nodeId" from walk
-      ${haveCursor ? "where id >= $3" : ""}
-      limit ${haveCursor ? "$4" : "$3"}`;
-    const paramsArr = haveCursor
-      ? [br.rootNodeId, br.graphId, cursorNodeId, limit + 1]
-      : [br.rootNodeId, br.graphId, limit + 1];
-    const rows = await prisma.$queryRawUnsafe<Array<{ nodeId: string }>>(
-      sql,
-      ...paramsArr
-    );
+      select id as "nodeId", depth 
+      from backtrack
+      where id is not null
+      order by depth desc
+    `;
+
+    const allRows = await prisma.$queryRawUnsafe<
+      Array<{ nodeId: string; depth: number }>
+    >(backtrackSql, br.tipNodeId, br.graphId);
+
+    // Apply cursor-based pagination if needed
+    let rows = allRows;
+    if (cursorNodeId) {
+      const cursorIdx = rows.findIndex((r) => r.nodeId === cursorNodeId);
+      if (cursorIdx >= 0) {
+        rows = rows.slice(cursorIdx);
+      }
+    }
 
     let nextCursor: string | null = null;
     const slice = rows.slice(0, limit);

@@ -56,12 +56,12 @@ export default function RootLayout({
               enableSystem
               disableTransitionOnChange
             >
-              <main className="min-h-screen flex flex-col items-center">
-                <div className="flex-1 w-full flex flex-col items-center">
-                  <Navbar />
+              <div className="min-h-screen flex flex-col">
+                <Navbar />
+                <main className="flex-1 w-full pt-16 flex justify-center items-center">
                   {children}
-                </div>
-              </main>
+                </main>
+              </div>
             </ThemeProvider>
           </QueryProvider>
         </ClerkProvider>
