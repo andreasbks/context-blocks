@@ -3,6 +3,7 @@
 import { GitBranch } from "lucide-react";
 import { z } from "zod";
 
+import { MarkdownContent } from "@/components/markdown-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LinearResponse } from "@/lib/api/schemas/responses";
@@ -110,8 +111,8 @@ export function MessageItem({
       </div>
 
       {/* Block Content */}
-      <div className="px-5 py-4 whitespace-pre-wrap leading-relaxed text-foreground">
-        {getBlockText(item.block)}
+      <div className="px-5 py-4">
+        <MarkdownContent content={getBlockText(item.block)} />
       </div>
 
       {/* References */}

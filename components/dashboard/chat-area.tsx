@@ -4,6 +4,7 @@ import { UseQueryResult } from "@tanstack/react-query";
 import { GitBranch } from "lucide-react";
 import { z } from "zod";
 
+import { MarkdownContent } from "@/components/markdown-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -312,9 +313,11 @@ export function ChatArea({
                 </div>
 
                 {/* Streaming Content */}
-                <div className="px-5 py-4 whitespace-pre-wrap leading-relaxed text-foreground">
-                  {streamingAssistant}
-                  <span className="inline-block w-0.5 h-5 bg-purple-500 animate-pulse ml-1" />
+                <div className="px-5 py-4">
+                  <div className="inline">
+                    <MarkdownContent content={streamingAssistant} />
+                    <span className="inline-block w-0.5 h-5 bg-purple-500 animate-pulse ml-1" />
+                  </div>
                 </div>
               </div>
             )}
