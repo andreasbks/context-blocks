@@ -136,3 +136,16 @@ export const DeleteGraphResponse = z.object({
   graphId: z.string(),
   deletedAt: z.string(),
 });
+
+export const BranchPreviewResponse = z.object({
+  items: z.array(
+    z.object({
+      nodeId: z.string(),
+      block: ContextBlockSchema.pick({
+        id: true,
+        kind: true,
+        content: true,
+      }),
+    })
+  ),
+});

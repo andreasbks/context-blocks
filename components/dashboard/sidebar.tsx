@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { UseQueryResult } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, MessageSquare, Trash2 } from "lucide-react";
 import { z } from "zod";
 
 import { DeleteGraphDialog } from "@/components/dashboard/delete-graph-dialog";
@@ -32,8 +32,6 @@ interface SidebarProps {
   onGraphDeleted?: (graphId: string) => void;
 }
 
-const ExpandIcon = () => <span className="text-xl">→</span>;
-const CloseIcon = () => <span className="text-xl">✕</span>;
 const SearchIcon = () => <span className="text-sm">🔍</span>;
 const PlusIcon = () => <span className="text-lg">+</span>;
 
@@ -110,21 +108,24 @@ export function Sidebar({
       <aside
         className={`
           fixed left-0 top-16 h-[calc(100vh-4rem)] z-30
-          bg-background/95 backdrop-blur-sm border-r border-border/50
-          transition-all duration-300 ease-in-out
+          bg-background border-r transition-all duration-300 ease-in-out flex flex-col
           ${isOpen ? "opacity-0 pointer-events-none" : "opacity-100"}
           w-12
         `}
       >
-        <div className="flex flex-col h-full py-6 items-center">
+        <div className="flex items-center justify-center p-2 border-b bg-card/50">
           <Button
             variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0"
+            size="icon"
             onClick={onOpen}
+            className="h-8 w-8 flex-shrink-0"
+            aria-label="Expand sidebar"
           >
-            <ExpandIcon />
+            <ChevronRight className="h-4 w-4" />
           </Button>
+        </div>
+        <div className="flex-1 flex items-start justify-center pt-20">
+          <MessageSquare className="h-5 w-5 text-muted-foreground rotate-0" />
         </div>
       </aside>
 
@@ -132,28 +133,33 @@ export function Sidebar({
       <aside
         className={`
           fixed left-0 top-16 h-[calc(100vh-4rem)] z-30
-          bg-background/95 backdrop-blur-sm border-r border-border/50
-          transition-transform duration-300 ease-in-out
+          bg-background border-r transition-all duration-300 ease-in-out flex flex-col
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
           w-80
         `}
       >
-        <div className="flex flex-col h-full p-6">
-          {/* Sidebar Header */}
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold tracking-tight">Sessions</h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={onClose}
-            >
-              <CloseIcon />
-            </Button>
+        {/* Sidebar Header */}
+        <div className="flex items-center justify-between p-2 border-b bg-card/50">
+          <div className="flex items-center gap-2 ml-2">
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Sessions</span>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-8 w-8 flex-shrink-0"
+            aria-label="Collapse sidebar"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="flex flex-col flex-1 overflow-hidden p-4">
+          {/* Content wrapper */}
 
           {/* Search Bar */}
-          <div className="relative mb-4">
+          <div className="relative mb-3">
             <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none opacity-50">
               <SearchIcon />
             </div>

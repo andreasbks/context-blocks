@@ -1,8 +1,10 @@
 "use client";
 
+import { GitBranch } from "lucide-react";
 import { z } from "zod";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { LinearResponse } from "@/lib/api/schemas/responses";
 import { ContextBlockSchema } from "@/lib/api/schemas/shared";
 
@@ -40,17 +42,25 @@ const blockTypeConfig = {
 
 interface MessageItemProps {
   item: TimelineItem;
+  onStartFork?: (nodeId: string, messageText: string) => void;
+  showBranchButton?: boolean;
+  branchPointContent?: React.ReactNode;
 }
 
-export function MessageItem({ item }: MessageItemProps) {
+export function MessageItem({
+  item,
+  onStartFork,
+  showBranchButton = false,
+  branchPointContent,
+}: MessageItemProps) {
   const blockType = item.block.kind;
   const config = blockTypeConfig[blockType];
 
   return (
     <div
       className={`
-        rounded-xl border-2 transition-all duration-200
-        bg-card hover:shadow-md
+        group/message rounded-xl border-2 transition-all duration-200
+        bg-card hover:shadow-md relative
         ${config.borderColor}
       `}
     >
@@ -75,10 +85,27 @@ export function MessageItem({ item }: MessageItemProps) {
           )}
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          {item.block.createdAt
-            ? new Date(item.block.createdAt).toLocaleString()
-            : "Just now"}
+        <div className="flex items-center gap-2">
+          {/* Start Branch Button - Appears on hover */}
+          {showBranchButton && onStartFork && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const messageText = getBlockText(item.block);
+                onStartFork(item.nodeId, messageText);
+              }}
+              className="opacity-0 group-hover/message:opacity-100 transition-opacity h-7 px-2 text-xs"
+            >
+              <GitBranch className="mr-1.5 h-3.5 w-3.5" />
+              Branch
+            </Button>
+          )}
+          <div className="text-xs text-muted-foreground">
+            {item.block.createdAt
+              ? new Date(item.block.createdAt).toLocaleString()
+              : "Just now"}
+          </div>
         </div>
       </div>
 
@@ -103,6 +130,11 @@ export function MessageItem({ item }: MessageItemProps) {
             </span>
           ))}
         </div>
+      )}
+
+      {/* Branch Point - Below message */}
+      {branchPointContent && (
+        <div className="px-5 pb-4">{branchPointContent}</div>
       )}
     </div>
   );
