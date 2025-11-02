@@ -18,18 +18,6 @@ import { MessageItem } from "./message-item";
 type TimelineItem = z.infer<typeof LinearResponse>["items"][number];
 type GraphDetail = z.infer<typeof GraphDetailResponse>;
 
-// Helper to safely extract text from block content
-function getBlockText(block: TimelineItem["block"]): string {
-  if (
-    block.content &&
-    typeof block.content === "object" &&
-    "text" in block.content
-  ) {
-    return String(block.content.text);
-  }
-  return "";
-}
-
 interface ForkContext {
   nodeId: string;
   branchName: string;
@@ -134,7 +122,7 @@ export function ChatArea({
 
       {/* Timeline - Scrollable Chat Area with Inline Composer */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 md:px-8 py-4 pr-2">
+        <div className="max-w-4xl mx-auto px-4 md:px-8 py-4">
           <div className="space-y-4">
             {linearQuery.isLoading ? (
               <div className="flex items-center justify-center h-40 text-muted-foreground">
@@ -210,105 +198,91 @@ export function ChatArea({
                 }
 
                 return (
-                  <div
-                    key={item.nodeId}
-                    className="group/message-wrapper relative"
-                  >
-                    {/* Branch Pills - Positioned outside the message flow */}
-                    {shouldShowPills && alternateBranches.length > 0 && (
-                      <BranchPoint
-                        alternateBranches={alternateBranches}
-                        onSelectBranch={onSelectBranch}
-                        graphId={selectedGraphId}
-                      />
-                    )}
-
-                    <MessageItem item={item} />
-
-                    {/* Inter-Message Branch Button - Appears on hover between messages */}
-                    {!forkContext && (
-                      <div className="relative h-0 flex items-center justify-center">
-                        <div className="absolute inset-x-0 top-2 opacity-0 group-hover/message-wrapper:opacity-100 transition-all duration-200 flex items-center justify-center z-10">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const messageText = getBlockText(item.block);
-                              onStartFork(item.nodeId, messageText);
-                            }}
-                            className="bg-background/95 backdrop-blur-sm shadow-lg border-primary/50 hover:border-primary hover:bg-primary/10 animate-in fade-in slide-in-from-top-1 duration-200"
-                          >
-                            <GitBranch className="mr-2 h-4 w-4" />
-                            Start new branch here
-                          </Button>
-                        </div>
-                      </div>
-                    )}
+                  <div key={item.nodeId}>
+                    <MessageItem
+                      item={item}
+                      showBranchButton={!forkContext}
+                      onStartFork={onStartFork}
+                      branchPointContent={
+                        shouldShowPills && alternateBranches.length > 0 ? (
+                          <BranchPoint
+                            alternateBranches={alternateBranches}
+                            onSelectBranch={onSelectBranch}
+                            graphId={selectedGraphId}
+                          />
+                        ) : undefined
+                      }
+                    />
 
                     {/* Inline Fork Composer - Show if this is the fork context node */}
                     {forkContext && forkContext.nodeId === item.nodeId && (
                       <div className="my-4 ml-6 animate-in slide-in-from-top-2 duration-300">
-                        {/* Duplicated message with visual indication */}
-                        <div className="relative mb-3 pl-6 border-l-2 border-primary/30">
-                          <div className="rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 px-4 py-3">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge
-                                variant="outline"
-                                className="text-xs border-primary/50 text-primary"
-                              >
-                                Forking from here
-                              </Badge>
-                              <span className="text-xs text-muted-foreground">
-                                New branch: {forkContext.branchName}
-                              </span>
+                        <form onSubmit={onSubmitFork}>
+                          <div className="rounded-xl border-2 border-dashed border-primary/30 bg-card hover:border-primary/40 transition-colors">
+                            <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border/50">
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs font-medium bg-primary/10 text-primary border-primary/30"
+                                >
+                                  <GitBranch className="mr-1 h-3 w-3" />
+                                  Fork from here
+                                </Badge>
+                                {forkComposer.length > 0 && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {forkComposer.length} characters
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  disabled={!forkComposer.trim() || isStreaming}
+                                  className="min-w-[100px]"
+                                >
+                                  {isStreaming ? (
+                                    <span className="animate-pulse">
+                                      Creating...
+                                    </span>
+                                  ) : (
+                                    <>
+                                      Create
+                                      <span className="ml-1.5">→</span>
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={onCancelFork}
+                                  disabled={isStreaming}
+                                  className="h-8 px-2"
+                                >
+                                  ✕
+                                </Button>
+                              </div>
                             </div>
-                            <p className="text-sm text-muted-foreground line-clamp-2">
-                              {forkContext.messageText}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Fork Composer */}
-                        <form onSubmit={onSubmitFork} className="space-y-3">
-                          <Textarea
-                            placeholder="Enter your message for the new branch..."
-                            value={forkComposer}
-                            onChange={(e) => setForkComposer(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                e.currentTarget.form?.requestSubmit();
-                              }
-                            }}
-                            rows={3}
-                            disabled={isStreaming}
-                            className="resize-none focus-visible:ring-2 focus-visible:ring-primary"
-                            autoFocus
-                          />
-                          <div className="flex justify-end items-center gap-2">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={onCancelFork}
-                              disabled={isStreaming}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              type="submit"
-                              size="sm"
-                              disabled={!forkComposer.trim() || isStreaming}
-                              className="min-w-[100px]"
-                            >
-                              {isStreaming ? (
-                                <>
-                                  <span className="animate-pulse">Sending</span>
-                                </>
-                              ) : (
-                                <>Start Branch</>
-                              )}
-                            </Button>
+                            <div className="px-4 py-3">
+                              <Textarea
+                                placeholder="Type your message to start the new branch... (Press Enter to send, Shift+Enter for new line)"
+                                value={forkComposer}
+                                onChange={(e) =>
+                                  setForkComposer(e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    e.currentTarget.form?.requestSubmit();
+                                  }
+                                }}
+                                rows={3}
+                                disabled={isStreaming}
+                                className="resize-none border-0 p-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent placeholder:text-muted-foreground/50"
+                                autoFocus
+                              />
+                            </div>
                           </div>
                         </form>
                       </div>

@@ -182,14 +182,22 @@ export function BranchPoint({
   if (alternateBranches.length === 0) return null;
 
   return (
-    <div className="absolute right-0 top-2 flex items-start gap-2 pr-4 z-30">
-      {alternateBranches.map((branch) => (
-        <BranchPill
-          key={branch.id}
-          branch={branch}
-          onSelectBranch={onSelectBranch}
-        />
-      ))}
+    <div className="mt-3 border-t pt-3">
+      <div className="flex items-center gap-2 mb-2">
+        <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground">
+          Alternate branches
+        </span>
+      </div>
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+        {alternateBranches.map((branch) => (
+          <BranchPill
+            key={branch.id}
+            branch={branch}
+            onSelectBranch={onSelectBranch}
+          />
+        ))}
+      </div>
     </div>
   );
 }
