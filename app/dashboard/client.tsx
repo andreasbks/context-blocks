@@ -208,6 +208,9 @@ export default function DashboardClient() {
     );
     const expectedVersion = current?.version;
 
+    // Mark as manually selected to prevent auto-switch after sending
+    setManuallySelectedBranch(true);
+
     await chat.sendMessage(text, expectedVersion);
   };
 
@@ -341,7 +344,7 @@ export default function DashboardClient() {
           marginRight: branchTreeOpen ? `${branchTreeWidth}px` : "48px",
         }}
       >
-        <div className="h-full flex flex-col max-w-4xl mx-auto px-4 md:px-8">
+        <div className="h-full flex flex-col">
           {/* Chat Area */}
           <ChatArea
             selectedGraphId={selectedGraphId}

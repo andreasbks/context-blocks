@@ -56,15 +56,22 @@ export function BranchTreeNode({
 
   // Helper functions for preview content
   const getBlockText = (content: unknown): string => {
-    if (typeof content !== "string") return String(content);
-    try {
-      const parsed = JSON.parse(content);
-      if (parsed.text) return parsed.text;
-      if (typeof parsed === "string") return parsed;
-      return content;
-    } catch {
-      return content;
+    // If content is already an object with a text property
+    if (content && typeof content === "object" && "text" in content) {
+      return String(content.text);
     }
+    // If content is a string, try to parse it as JSON
+    if (typeof content === "string") {
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.text) return parsed.text;
+        if (typeof parsed === "string") return parsed;
+        return content;
+      } catch {
+        return content;
+      }
+    }
+    return "";
   };
 
   const truncateText = (text: string, maxLength: number = 100): string => {
