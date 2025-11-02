@@ -105,7 +105,7 @@ function BranchPill({
                 First {preview.items.length} message
                 {preview.items.length > 1 ? "s" : ""} in this branch:
               </p>
-              {preview.items.map((item, idx) => {
+              {preview.items.map((item) => {
                 const isUser = item.block.kind === "user";
                 return (
                   <div
@@ -162,7 +162,6 @@ function BranchPill({
 export function BranchPoint({
   alternateBranches,
   onSelectBranch,
-  graphId,
 }: BranchPointProps) {
   // Only show if there are alternate branches to switch to
   if (alternateBranches.length === 0) return null;

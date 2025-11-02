@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
+import { BranchTreeSidebar } from "@/components/dashboard/branch-tree-sidebar";
 import { ChatArea } from "@/components/dashboard/chat-area";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import {
@@ -42,6 +43,7 @@ export default function DashboardClient() {
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [branchTreeOpen, setBranchTreeOpen] = useState(true);
   const [creationStreamingAssistant, setCreationStreamingAssistant] =
     useState("");
   const [isCreationStreaming, setIsCreationStreaming] = useState(false);
@@ -97,6 +99,17 @@ export default function DashboardClient() {
   // Generate stream hook
   const { generateStream } = useGenerateStream();
 
+  // Handle streaming delta during graph creation
+  const handleStreamDelta = (chunk: string) => {
+    setCreationStreamingAssistant((prev) => (prev + chunk).slice(-8000));
+  };
+
+  // Handle streaming complete during graph creation
+  const handleStreamComplete = () => {
+    setIsCreationStreaming(false);
+    setCreationStreamingAssistant("");
+  };
+
   // Reset manual selection flag when graph changes
   useEffect(() => {
     setManuallySelectedBranch(false);
@@ -151,8 +164,10 @@ export default function DashboardClient() {
 
   // Auto-scroll when data changes
   useEffect(() => {
-    if (chat.scrollRef.current) {
-      chat.scrollRef.current.scrollTop = chat.scrollRef.current.scrollHeight;
+    const scrollElement = chat.scrollRef.current;
+    if (scrollElement) {
+      // eslint-disable-next-line react-hooks/immutability
+      scrollElement.scrollTop = scrollElement.scrollHeight;
     }
   }, [
     linearQuery.data,
@@ -167,6 +182,11 @@ export default function DashboardClient() {
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault();
         setSidebarOpen((prev) => !prev);
+      }
+      // Cmd/Ctrl + T to toggle branch tree
+      if ((e.metaKey || e.ctrlKey) && e.key === "t") {
+        e.preventDefault();
+        setBranchTreeOpen((prev) => !prev);
       }
     };
 
@@ -201,17 +221,6 @@ export default function DashboardClient() {
       branchId: data.branch.id,
       version: data.branch.version,
     });
-  };
-
-  // Handle streaming delta during graph creation
-  const handleStreamDelta = (chunk: string) => {
-    setCreationStreamingAssistant((prev) => (prev + chunk).slice(-8000));
-  };
-
-  // Handle streaming complete during graph creation
-  const handleStreamComplete = () => {
-    setIsCreationStreaming(false);
-    setCreationStreamingAssistant("");
   };
 
   // Handle graph deletion - select another graph or clear selection
@@ -311,7 +320,7 @@ export default function DashboardClient() {
 
   return (
     <div className="relative flex h-[calc(100vh-4rem)] w-full overflow-hidden">
-      {/* Sidebar */}
+      {/* Left Sidebar */}
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -328,6 +337,7 @@ export default function DashboardClient() {
         className={`
           flex-1 transition-all duration-300 ease-in-out
           ${sidebarOpen ? "ml-80" : "ml-12"}
+          ${branchTreeOpen ? "mr-80" : "mr-12"}
         `}
       >
         <div className="h-full flex flex-col max-w-4xl mx-auto px-4 md:px-8">
@@ -355,6 +365,15 @@ export default function DashboardClient() {
           />
         </div>
       </main>
+
+      {/* Right Branch Tree Sidebar */}
+      <BranchTreeSidebar
+        branches={graphDetailQuery.data?.branches ?? []}
+        activeBranchId={selectedBranchId}
+        isOpen={branchTreeOpen}
+        onToggle={() => setBranchTreeOpen((prev) => !prev)}
+        onSelectBranch={setSelectedBranchId}
+      />
     </div>
   );
 }
