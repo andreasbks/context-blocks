@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 import { ChevronLeft, ChevronRight, GitBranch } from "lucide-react";
 
 import { BranchTreeNode } from "@/components/dashboard/branch-tree-node";
@@ -20,6 +22,8 @@ interface BranchTreeSidebarProps {
   isOpen: boolean;
   onToggle: () => void;
   onSelectBranch: (branchId: string) => void;
+  width: number;
+  onWidthChange: (width: number) => void;
 }
 
 export function BranchTreeSidebar({
@@ -28,21 +32,63 @@ export function BranchTreeSidebar({
   isOpen,
   onToggle,
   onSelectBranch,
+  width,
+  onWidthChange,
 }: BranchTreeSidebarProps) {
+  const [isResizing, setIsResizing] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
   // Build the tree structure
   const tree = buildBranchTree(branches, activeBranchId);
 
   // Empty state
   const isEmpty = branches.length === 0;
 
+  // Handle resize
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!sidebarRef.current) return;
+
+      const newWidth = window.innerWidth - e.clientX;
+      const minWidth = 280; // Minimum 280px
+      const maxWidth = 600; // Maximum 600px to not destroy chat
+
+      onWidthChange(Math.min(Math.max(newWidth, minWidth), maxWidth));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing, onWidthChange]);
+
   return (
     <div
+      ref={sidebarRef}
       className={cn(
-        "fixed right-0 top-16 h-[calc(100vh-4rem)] bg-background border-l transition-all duration-300 ease-in-out z-30",
+        "fixed right-0 top-16 h-[calc(100vh-4rem)] bg-background border-l z-30",
         "flex flex-col",
-        isOpen ? "w-80" : "w-12"
+        isOpen ? "" : "w-12",
+        !isResizing && "transition-all duration-300 ease-in-out"
       )}
+      style={isOpen ? { width: `${width}px` } : undefined}
     >
+      {/* Resize handle */}
+      {isOpen && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize transition-colors group"
+          onMouseDown={() => setIsResizing(true)}
+        ></div>
+      )}
       {/* Collapse/Expand Toggle Button */}
       <div className="flex items-center justify-between p-2 border-b bg-card/50">
         {isOpen && (
@@ -68,7 +114,7 @@ export function BranchTreeSidebar({
 
       {/* Sidebar Content */}
       {isOpen && (
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto overflow-x-auto px-4 py-4 pr-2">
           {isEmpty ? (
             // Empty state
             <Card className="border-dashed">
@@ -84,7 +130,7 @@ export function BranchTreeSidebar({
             </Card>
           ) : (
             // Branch tree
-            <div className="space-y-1">
+            <div className="space-y-1 pr-2">
               <div className="mb-4 px-1">
                 <p className="text-xs text-muted-foreground">
                   {branches.length}{" "}

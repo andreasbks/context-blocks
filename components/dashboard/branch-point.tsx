@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { GitBranch } from "lucide-react";
 import { z } from "zod";
@@ -54,13 +54,28 @@ function BranchPill({
   onSelectBranch: (branchId: string) => void;
 }) {
   const [isHovered, setIsHovered] = useState(false);
+  const [showPopover, setShowPopover] = useState(false);
+
+  // Debounce popover opening - only show after 500ms of hover
+  useEffect(() => {
+    if (isHovered) {
+      const timer = setTimeout(() => {
+        setShowPopover(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowPopover(false);
+    }
+  }, [isHovered]);
+
   const { preview, isLoading } = useBranchPreview({
     branchId: branch.id,
-    enabled: isHovered,
+    enabled: showPopover,
   });
 
   return (
-    <Popover open={isHovered} onOpenChange={setIsHovered}>
+    <Popover open={showPopover} onOpenChange={setShowPopover}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"

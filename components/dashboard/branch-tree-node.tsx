@@ -30,28 +30,28 @@ export function BranchTreeNode({
   const displayName = getBranchDisplayName(node.branch);
   const hasChildren = node.children.length > 0;
   const [isHovered, setIsHovered] = useState(false);
-  const [shouldFetchPreview, setShouldFetchPreview] = useState(false);
+  const [showPopover, setShowPopover] = useState(false);
 
   // Truncate long branch names
   const truncatedName =
     displayName.length > 35 ? `${displayName.slice(0, 35)}...` : displayName;
 
-  // Debounce preview fetching - only fetch after 500ms of hover
+  // Debounce popover opening - only show after 500ms of hover
   useEffect(() => {
     if (isHovered) {
       const timer = setTimeout(() => {
-        setShouldFetchPreview(true);
+        setShowPopover(true);
       }, 500);
       return () => clearTimeout(timer);
     } else {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShouldFetchPreview(false);
+      setShowPopover(false);
     }
   }, [isHovered]);
 
   const { preview, isLoading } = useBranchPreview({
     branchId: node.branch.id,
-    enabled: shouldFetchPreview,
+    enabled: showPopover,
   });
 
   // Helper functions for preview content
@@ -103,7 +103,7 @@ export function BranchTreeNode({
       )}
 
       {/* Branch node button with preview popover */}
-      <Popover open={isHovered} onOpenChange={setIsHovered}>
+      <Popover open={showPopover} onOpenChange={setShowPopover}>
         <PopoverTrigger asChild>
           <Button
             variant="ghost"
@@ -111,7 +111,7 @@ export function BranchTreeNode({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
             className={cn(
-              "w-full justify-start gap-2 h-auto py-2 px-3 mb-1 transition-all duration-200",
+              "justify-start gap-2 h-auto py-2 px-3 mb-1 transition-all duration-200",
               "hover:bg-accent hover:shadow-sm",
               node.isActive &&
                 "bg-primary/10 border border-primary hover:bg-primary/15",
@@ -119,6 +119,7 @@ export function BranchTreeNode({
             )}
             style={{
               marginLeft: `${node.depth * 24}px`,
+              width: `calc(100% - ${node.depth * 24}px)`,
             }}
           >
             {/* Branch icon */}
@@ -166,7 +167,7 @@ export function BranchTreeNode({
 
           {/* Content */}
           <div className="p-4">
-            {isLoading || !shouldFetchPreview ? (
+            {isLoading ? (
               <div className="flex items-center gap-2 text-muted-foreground py-4">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 <span className="text-sm">Loading preview...</span>

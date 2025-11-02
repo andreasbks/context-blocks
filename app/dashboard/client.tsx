@@ -44,6 +44,7 @@ export default function DashboardClient() {
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [branchTreeOpen, setBranchTreeOpen] = useState(true);
+  const [branchTreeWidth, setBranchTreeWidth] = useState(320);
   const [creationStreamingAssistant, setCreationStreamingAssistant] =
     useState("");
   const [isCreationStreaming, setIsCreationStreaming] = useState(false);
@@ -334,11 +335,11 @@ export default function DashboardClient() {
 
       {/* Main Content Area - Centered Chat */}
       <main
-        className={`
-          flex-1 transition-all duration-300 ease-in-out
-          ${sidebarOpen ? "ml-80" : "ml-12"}
-          ${branchTreeOpen ? "mr-80" : "mr-12"}
-        `}
+        className="flex-1 transition-all duration-300 ease-in-out"
+        style={{
+          marginLeft: sidebarOpen ? "320px" : "48px",
+          marginRight: branchTreeOpen ? `${branchTreeWidth}px` : "48px",
+        }}
       >
         <div className="h-full flex flex-col max-w-4xl mx-auto px-4 md:px-8">
           {/* Chat Area */}
@@ -373,6 +374,8 @@ export default function DashboardClient() {
         isOpen={branchTreeOpen}
         onToggle={() => setBranchTreeOpen((prev) => !prev)}
         onSelectBranch={setSelectedBranchId}
+        width={branchTreeWidth}
+        onWidthChange={setBranchTreeWidth}
       />
     </div>
   );
