@@ -491,10 +491,28 @@ export async function POST(
           "POST /v1/branches/{branchId}/send/stream background error",
           err
         );
+
+        // Handle specific error types
+        let errorCode = "INTERNAL";
+        let errorMessage = "Internal server error";
+
+        // Check for Prisma unique constraint violation (P2002)
+        if (err && typeof err === "object" && "code" in err) {
+          const prismaErr = err as {
+            code: string;
+            meta?: { target?: string[] };
+          };
+          if (prismaErr.code === "P2002") {
+            errorCode = "DUPLICATE_BRANCH_NAME";
+            const target = prismaErr.meta?.target?.join(", ") || "name";
+            errorMessage = `A branch with this name already exists. Please try a different name. (Constraint: ${target})`;
+          }
+        }
+
         await writeSSE(
           ErrorEnvelopeSchema,
           "error",
-          { error: { code: "INTERNAL", message: "Internal server error" } },
+          { error: { code: errorCode, message: errorMessage } },
           sse
         );
         await sse.writer.close();

@@ -15,4 +15,6 @@ export const QUERY_KEYS = {
       "linear",
       includeRefs ? "withRefs" : "noRefs",
     ] as const,
+  branchPreview: (branchId: string) =>
+    ["branches", branchId, "preview"] as const,
 } as const;

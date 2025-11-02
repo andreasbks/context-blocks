@@ -68,15 +68,18 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
       },
     };
 
-    // Add optimistic user message to cache immediately
+    // Add optimistic user message to cache immediately (only if NOT forking)
+    // When forking, we can't add to a non-existent branch cache
     const queryKey = QUERY_KEYS.branchLinear(capturedBranchId, true);
-    qc.setQueryData<LinearQueryData>(queryKey, (old) => {
-      if (!old?.items) return old;
-      return {
-        ...old,
-        items: [...old.items, optimisticUserItem],
-      };
-    });
+    if (!forkParams) {
+      qc.setQueryData<LinearQueryData>(queryKey, (old) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: [...old.items, optimisticUserItem],
+        };
+      });
+    }
 
     try {
       await sendStream({
@@ -96,27 +99,16 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
           if (data.branch) {
             newBranchId = data.branch.id;
 
-            // Add new branch to GraphDetail cache
-            qc.setQueryData<GraphDetail>(
-              QUERY_KEYS.graphDetail(capturedGraphId),
-              (old) => {
-                if (!old?.branches) return old;
-                return {
-                  ...old,
-                  branches: [...old.branches, data.branch!],
-                };
-              }
-            );
+            // Invalidate graph detail to refetch complete branch list
+            void qc.invalidateQueries({
+              queryKey: QUERY_KEYS.graphDetail(capturedGraphId),
+            });
 
-            // Create initial linear query data for the new branch
-            const realMessages = data.items.map((item) => item.item);
-            qc.setQueryData<LinearQueryData>(
-              QUERY_KEYS.branchLinear(data.branch.id, true),
-              {
-                items: realMessages,
-                nextCursor: null,
-              }
-            );
+            // Invalidate the new branch's linear query so it fetches complete timeline
+            // (from root to tip, including shared history before the fork)
+            void qc.invalidateQueries({
+              queryKey: QUERY_KEYS.branchLinear(data.branch.id, true),
+            });
           } else {
             // Normal append (not a fork) - update existing branch
             qc.setQueryData<LinearQueryData>(queryKey, (old) => {
@@ -177,22 +169,29 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
               description: error.message,
               duration: 5000,
             });
+          } else if (error.code === "DUPLICATE_BRANCH_NAME") {
+            toast.error("Duplicate branch name", {
+              description: error.message,
+              duration: 5000,
+            });
           } else {
             toast.error("Failed to send message", {
               description: error.message || "Please try again.",
             });
           }
 
-          // Remove optimistic messages on error
-          qc.setQueryData<LinearQueryData>(queryKey, (old) => {
-            if (!old?.items) return old;
-            return {
-              ...old,
-              items: old.items.filter(
-                (item) => item.nodeId !== optimisticUserNodeId
-              ),
-            };
-          });
+          // Remove optimistic message on error (only if not forking)
+          if (!forkParams) {
+            qc.setQueryData<LinearQueryData>(queryKey, (old) => {
+              if (!old?.items) return old;
+              return {
+                ...old,
+                items: old.items.filter(
+                  (item) => item.nodeId !== optimisticUserNodeId
+                ),
+              };
+            });
+          }
           setStreamingAssistant("");
           setIsStreaming(false);
         },
@@ -207,19 +206,77 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
         description: err instanceof Error ? err.message : "Please try again.",
       });
 
-      // Remove optimistic message on error
-      qc.setQueryData<LinearQueryData>(queryKey, (old) => {
-        if (!old?.items) return old;
-        return {
-          ...old,
-          items: old.items.filter(
-            (item) => item.nodeId !== optimisticUserNodeId
-          ),
-        };
-      });
+      // Remove optimistic message on error (only if not forking)
+      if (!forkParams) {
+        qc.setQueryData<LinearQueryData>(queryKey, (old) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.filter(
+              (item) => item.nodeId !== optimisticUserNodeId
+            ),
+          };
+        });
+      }
       setStreamingAssistant("");
       setIsStreaming(false);
 
+      return undefined;
+    }
+  };
+
+  const appendFork = async (
+    text: string,
+    expectedVersion: number | undefined,
+    forkParams: {
+      forkFromNodeId: string;
+      newBranchName: string;
+    }
+  ): Promise<{ newBranchId: string; version: number } | undefined> => {
+    if (!branchId || !graphId) return;
+
+    const capturedBranchId = branchId;
+
+    try {
+      const response = await fetch(
+        `/api/v1/branches/${capturedBranchId}/append`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            author: "user",
+            content: { text },
+            expectedVersion,
+            forkFromNodeId: forkParams.forkFromNodeId,
+            newBranchName: forkParams.newBranchName,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error?.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.branch) {
+        // Fork was created successfully
+        const newBranchId = data.branch.id;
+        const version = data.branch.version;
+
+        return { newBranchId, version };
+      }
+
+      return undefined;
+    } catch (err) {
+      console.error("Append fork error:", err);
+      toast.error("Failed to create branch", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
       return undefined;
     }
   };
@@ -231,6 +288,7 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
     isStreaming,
     scrollRef,
     sendMessage,
+    appendFork,
   };
 }
 

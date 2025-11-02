@@ -212,12 +212,21 @@ export function ChatArea({
 
             return (
               <div key={item.nodeId} className="group/message-wrapper relative">
+                {/* Branch Pills - Positioned outside the message flow */}
+                {shouldShowPills && alternateBranches.length > 0 && (
+                  <BranchPoint
+                    alternateBranches={alternateBranches}
+                    onSelectBranch={onSelectBranch}
+                    graphId={selectedGraphId}
+                  />
+                )}
+
                 <MessageItem item={item} />
 
                 {/* Inter-Message Branch Button - Appears on hover between messages */}
                 {!forkContext && (
                   <div className="relative h-0 flex items-center justify-center">
-                    <div className="absolute inset-x-0 top-2 opacity-0 group-hover/message-wrapper:opacity-100 transition-all duration-200 flex items-center justify-center z-20">
+                    <div className="absolute inset-x-0 top-2 opacity-0 group-hover/message-wrapper:opacity-100 transition-all duration-200 flex items-center justify-center z-10">
                       <Button
                         variant="outline"
                         size="sm"
@@ -301,14 +310,6 @@ export function ChatArea({
                       </div>
                     </form>
                   </div>
-                )}
-
-                {/* Show branch pills after this block if needed */}
-                {shouldShowPills && alternateBranches.length > 0 && (
-                  <BranchPoint
-                    alternateBranches={alternateBranches}
-                    onSelectBranch={onSelectBranch}
-                  />
                 )}
               </div>
             );

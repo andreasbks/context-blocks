@@ -17,6 +17,7 @@ export const ErrorCodeSchema = z.enum([
   "IDEMPOTENCY_REPLAY",
   "QUOTA_EXCEEDED",
   "RATE_LIMITED",
+  "DUPLICATE_BRANCH_NAME",
   "INTERNAL",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;

@@ -9,6 +9,7 @@ export type ErrorCode =
   | "IDEMPOTENCY_REPLAY"
   | "QUOTA_EXCEEDED"
   | "RATE_LIMITED"
+  | "DUPLICATE_BRANCH_NAME"
   | "INTERNAL";
 
 export function jsonError(
@@ -28,6 +29,7 @@ export function jsonError(
     IDEMPOTENCY_REPLAY: 200,
     QUOTA_EXCEEDED: 429,
     RATE_LIMITED: 429,
+    DUPLICATE_BRANCH_NAME: 409,
     INTERNAL: 500,
   };
   return new Response(JSON.stringify({ error: { code, message, details } }), {

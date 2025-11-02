@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
 import { ChatArea } from "@/components/dashboard/chat-area";
@@ -52,6 +52,9 @@ export default function DashboardClient() {
   } | null>(null);
   const [forkContext, setForkContext] = useState<ForkContext | null>(null);
   const [forkComposer, setForkComposer] = useState("");
+  const [manuallySelectedBranch, setManuallySelectedBranch] = useState(false);
+
+  const qc = useQueryClient();
 
   // Queries
   const graphsQuery = useQuery({
@@ -94,8 +97,15 @@ export default function DashboardClient() {
   // Generate stream hook
   const { generateStream } = useGenerateStream();
 
-  // Select the first branch when graph changes
+  // Reset manual selection flag when graph changes
   useEffect(() => {
+    setManuallySelectedBranch(false);
+  }, [selectedGraphId]);
+
+  // Select the first branch when graph changes (but only if not manually selected)
+  useEffect(() => {
+    if (manuallySelectedBranch) return; // Skip if user manually selected a branch
+
     const branches = graphDetailQuery.data?.branches;
     const first = branches?.[0];
     if (first) {
@@ -103,7 +113,11 @@ export default function DashboardClient() {
     } else {
       setSelectedBranchId(null);
     }
-  }, [graphDetailQuery.data?.branches, selectedGraphId]);
+  }, [
+    graphDetailQuery.data?.branches,
+    selectedGraphId,
+    manuallySelectedBranch,
+  ]);
 
   // Trigger generate stream after new session UI is rendered
   useEffect(() => {
@@ -215,13 +229,26 @@ export default function DashboardClient() {
     }
   };
 
-  // Handle start fork - create fork context
+  // Handle start fork - create fork context with unique sequential naming
   const handleStartFork = (nodeId: string, messageText: string) => {
-    const branchCount = (graphDetailQuery.data?.branches ?? []).length;
+    const existingBranches = graphDetailQuery.data?.branches ?? [];
+
+    // Find the next available branch number by looking at existing branch names
+    const branchNumbers = existingBranches
+      .map((b) => {
+        const match = b.name.match(/^Branch #(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((n) => n > 0);
+
+    const nextBranchNumber =
+      branchNumbers.length > 0 ? Math.max(...branchNumbers) + 1 : 1;
+
+    // Create descriptive branch name with sequential number and message context
     const branchName =
       messageText.length > 0
-        ? `Branch from ${messageText.slice(0, 20)}${messageText.length > 20 ? "..." : ""}`
-        : `Branch #${branchCount + 1}`;
+        ? `Branch #${nextBranchNumber}: ${messageText.slice(0, 30)}${messageText.length > 30 ? "..." : ""}`
+        : `Branch #${nextBranchNumber}`;
 
     setForkContext({
       nodeId,
@@ -237,7 +264,7 @@ export default function DashboardClient() {
     setForkComposer("");
   };
 
-  // Handle submit fork - create branch with first message
+  // Handle submit fork - create branch with user message, then trigger generation
   const handleSubmitFork = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!forkContext || !selectedBranchId || !selectedGraphId) return;
@@ -250,8 +277,8 @@ export default function DashboardClient() {
     );
     const expectedVersion = current?.version;
 
-    // Call sendMessage with fork parameters
-    const result = await chat.sendMessage(text, expectedVersion, {
+    // Step 1: Create branch and append user message (no assistant yet)
+    const result = await chat.appendFork(text, expectedVersion, {
       forkFromNodeId: forkContext.nodeId,
       newBranchName: forkContext.branchName,
     });
@@ -260,9 +287,25 @@ export default function DashboardClient() {
     setForkContext(null);
     setForkComposer("");
 
-    // Switch to the new branch if it was created
+    // Step 2: Switch to the new branch and prepare for generation
     if (result?.newBranchId) {
+      // Invalidate graph detail to pick up the new branch
+      void qc.invalidateQueries({
+        queryKey: QUERY_KEYS.graphDetail(selectedGraphId),
+      });
+
+      setManuallySelectedBranch(true);
       setSelectedBranchId(result.newBranchId);
+
+      // Step 3: Set up streaming state and store pending generate
+      setIsCreationStreaming(true);
+      setCreationStreamingAssistant("");
+
+      setPendingGenerate({
+        graphId: selectedGraphId,
+        branchId: result.newBranchId,
+        version: result.version,
+      });
     }
   };
 
