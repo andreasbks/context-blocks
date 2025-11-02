@@ -99,10 +99,10 @@ export function ChatArea({
   return (
     <div className="flex flex-col h-full">
       {/* Compact Header - Fixed, Not Scrollable */}
-      <div className="flex-shrink-0 border-b bg-card/50">
+      <div className="flex-shrink-0 bg-card/50">
         <div className="flex items-center justify-between px-3 py-3 max-w-4xl mx-auto">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="text-sm font-medium truncate">
+            <span className="text-sm font-bold truncate">
               {graphDetailQuery.data?.graph.title ?? "Untitled Session"}
             </span>
             {currentBranchName && (
