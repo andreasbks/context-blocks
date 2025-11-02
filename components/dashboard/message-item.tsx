@@ -99,7 +99,7 @@ export function MessageItem({
               className="opacity-0 group-hover/message:opacity-100 transition-opacity h-7 px-2 text-xs"
             >
               <GitBranch className="mr-1.5 h-3.5 w-3.5" />
-              Branch
+              Fork from here
             </Button>
           )}
           <div className="text-xs text-muted-foreground">

@@ -1,6 +1,7 @@
 import { buildSimpleContext } from "@/lib/ai/build-context";
 import { type Message, generateBranchName } from "@/lib/ai/naming";
 import { openai } from "@/lib/ai/openai";
+import { buildPromptWithSystem } from "@/lib/ai/system-prompt";
 import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
 import {
@@ -290,7 +291,8 @@ export async function POST(
         let accumulatedResponse = "";
         let finalAssistantResponse = "";
 
-        const input = await buildSimpleContext(branchId);
+        const context = await buildSimpleContext(branchId);
+        const input = buildPromptWithSystem(context);
 
         const stream = await openaiClient.responses.create({
           model: requestedModel,
