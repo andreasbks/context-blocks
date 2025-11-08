@@ -1,5 +1,7 @@
 import { buildSimpleContext } from "@/lib/ai/build-context";
+import { type Message, generateBranchName } from "@/lib/ai/naming";
 import { openai } from "@/lib/ai/openai";
+import { buildPromptWithSystem } from "@/lib/ai/system-prompt";
 import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
 import {
@@ -22,6 +24,7 @@ import { writeSSE } from "@/lib/api/validators";
 import { parseParams } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
+import { ensureUniqueBranchName } from "@/lib/utils/unique-name";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // avoids any caching of the SSE route
@@ -162,7 +165,7 @@ export async function POST(
       return new Response(sse.readable, { headers });
     }
     log.info({ event: "validation_result", ok: true });
-    const { expectedVersion, forkFromNodeId, newBranchName } = parsed.data;
+    const { expectedVersion, forkFromNodeId } = parsed.data;
 
     const keepalive = setInterval(() => {
       void writeSSE(SSEKeepaliveSchema, "keepalive", {}, sse);
@@ -175,7 +178,8 @@ export async function POST(
         let accumulatedResponse = "";
         let finalAssistantResponse = "";
 
-        const input = await buildSimpleContext(branchId);
+        const context = await buildSimpleContext(branchId);
+        const input = buildPromptWithSystem(context);
 
         const stream = await openaiClient.responses.create({
           model: requestedModel,
@@ -252,7 +256,7 @@ export async function POST(
             targetBranch = await tx.branch.create({
               data: {
                 graphId: baseBranch.graphId,
-                name: newBranchName ?? `fork-${fromNode.id.slice(-6)}`,
+                name: "Generating name...",
                 rootNodeId: fromNode.id,
                 tipNodeId: fromNode.id,
                 version: 0,
@@ -403,6 +407,88 @@ export async function POST(
           headers: { "Content-Type": "application/json" },
           body: finalUnified,
         });
+
+        // Asynchronously generate and update branch name if fork was created
+        if (forkFromNodeId && "branch" in finalUnified) {
+          void (async () => {
+            try {
+              // Fetch last 5 messages from the timeline leading to fork point
+              const backtrackSql = `
+                with recursive backtrack(id, depth) as (
+                  select $1::text as id, 0 as depth
+                  union all
+                  select e."parentNodeId", backtrack.depth + 1
+                  from backtrack
+                  join "BlockEdge" e on e."childNodeId" = backtrack.id
+                  where e."graphId" = $2 
+                    and e."relation" = 'follows' 
+                    and e."deletedAt" is null
+                    and backtrack.depth < 5
+                )
+                select id as "nodeId" 
+                from backtrack
+                where id is not null
+                order by depth desc
+              `;
+
+              const contextResult = await prisma.$transaction(async (tx) => {
+                const branch = await tx.branch.findUnique({
+                  where: { id: branchId },
+                  include: { graph: true },
+                });
+                if (!branch) return { graphId: null, rows: [] };
+
+                const rows = await prisma.$queryRawUnsafe<
+                  Array<{ nodeId: string }>
+                >(backtrackSql, forkFromNodeId, branch.graphId);
+
+                return { graphId: branch.graphId, rows };
+              });
+
+              if (!contextResult.graphId) return;
+
+              const recentMessages: Message[] = [];
+              for (const { nodeId } of contextResult.rows) {
+                const node = await prisma.graphNode.findUnique({
+                  where: { id: nodeId },
+                  include: { block: true },
+                });
+                if (node && !node.hiddenAt) {
+                  const contentText =
+                    typeof node.block.content === "string"
+                      ? node.block.content
+                      : ((node.block.content as { text?: string })?.text ?? "");
+                  recentMessages.push({
+                    role: node.block.kind === "user" ? "user" : "assistant",
+                    content: contentText,
+                  });
+                }
+              }
+
+              const generatedName = await generateBranchName(recentMessages);
+              if (generatedName) {
+                const uniqueName = await ensureUniqueBranchName(
+                  contextResult.graphId,
+                  generatedName
+                );
+                await prisma.branch.update({
+                  where: { id: (finalUnified.branch as { id: string }).id },
+                  data: { name: uniqueName },
+                });
+                log.info({
+                  event: "branch_name_generated",
+                  branchId: (finalUnified.branch as { id: string }).id,
+                  name: uniqueName,
+                });
+              }
+            } catch (err) {
+              log.error({
+                event: "branch_name_generation_failed",
+                error: err,
+              });
+            }
+          })();
+        }
       } catch (err) {
         console.error(
           "POST /v1/branches/{branchId}/generate/stream background error",
