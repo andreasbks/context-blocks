@@ -15,6 +15,7 @@ import { useBranchPreview } from "@/lib/hooks/use-branch-preview";
 import { cn } from "@/lib/utils";
 import type { BranchNode } from "@/lib/utils/branch-tree";
 import { getBranchDisplayName } from "@/lib/utils/branch-tree";
+import { stripMarkdown } from "@/lib/utils/strip-markdown";
 
 interface BranchTreeNodeProps {
   node: BranchNode;
@@ -75,8 +76,10 @@ export function BranchTreeNode({
   };
 
   const truncateText = (text: string, maxLength: number = 100): string => {
-    if (text.length <= maxLength) return text;
-    return text.slice(0, maxLength) + "...";
+    // Strip markdown first, then truncate
+    const plainText = stripMarkdown(text);
+    if (plainText.length <= maxLength) return plainText;
+    return plainText.slice(0, maxLength) + "...";
   };
 
   const getAuthorIcon = (kind: string): string => {

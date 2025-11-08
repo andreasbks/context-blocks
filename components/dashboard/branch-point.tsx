@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/popover";
 import { GraphDetailResponse } from "@/lib/api/schemas/responses";
 import { useBranchPreview } from "@/lib/hooks/use-branch-preview";
+import { stripMarkdown } from "@/lib/utils/strip-markdown";
 
 type Branch = z.infer<typeof GraphDetailResponse>["branches"][number];
 
@@ -31,8 +32,10 @@ function getBlockText(block: { content: unknown }): string {
 
 // Helper to truncate text
 function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength) + "...";
+  // Strip markdown first, then truncate
+  const plainText = stripMarkdown(text);
+  if (plainText.length <= maxLength) return plainText;
+  return plainText.slice(0, maxLength) + "...";
 }
 
 // Helper to get author icon
