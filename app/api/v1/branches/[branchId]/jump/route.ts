@@ -60,19 +60,16 @@ export async function POST(
         return { error: Errors.validation("Branch root missing") };
 
       // Verify reachability root ->* toNodeId via follows
-      const reachableRows = await tx.$queryRawUnsafe<Array<{ ok: boolean }>>(
-        `with recursive walk(id) as (
-            select $1::text as id
-            union all
-            select e."childNodeId" from walk
-            join "BlockEdge" e on e."parentNodeId" = walk.id
-            where e."graphId" = $2 and e."relation" = 'follows' and e."deletedAt" is null
-          )
-          select exists(select 1 from walk where id = $3) as ok`,
-        br.rootNodeId,
-        br.graphId,
-        toNodeId
-      );
+      const reachableRows = await tx.$queryRaw<Array<{ ok: boolean }>>`
+        with recursive walk(id) as (
+          select ${br.rootNodeId}::text as id
+          union all
+          select e."childNodeId" from walk
+          join "BlockEdge" e on e."parentNodeId" = walk.id
+          where e."graphId" = ${br.graphId} and e."relation" = 'follows' and e."deletedAt" is null
+        )
+        select exists(select 1 from walk where id = ${toNodeId}) as ok
+      `;
       const reachable = reachableRows[0]?.ok === true;
       if (!reachable)
         return {

@@ -413,24 +413,6 @@ export async function POST(
           void (async () => {
             try {
               // Fetch last 5 messages from the timeline leading to fork point
-              const backtrackSql = `
-                with recursive backtrack(id, depth) as (
-                  select $1::text as id, 0 as depth
-                  union all
-                  select e."parentNodeId", backtrack.depth + 1
-                  from backtrack
-                  join "BlockEdge" e on e."childNodeId" = backtrack.id
-                  where e."graphId" = $2 
-                    and e."relation" = 'follows' 
-                    and e."deletedAt" is null
-                    and backtrack.depth < 5
-                )
-                select id as "nodeId" 
-                from backtrack
-                where id is not null
-                order by depth desc
-              `;
-
               const contextResult = await prisma.$transaction(async (tx) => {
                 const branch = await tx.branch.findUnique({
                   where: { id: branchId },
@@ -438,9 +420,23 @@ export async function POST(
                 });
                 if (!branch) return { graphId: null, rows: [] };
 
-                const rows = await prisma.$queryRawUnsafe<
-                  Array<{ nodeId: string }>
-                >(backtrackSql, forkFromNodeId, branch.graphId);
+                const rows = await prisma.$queryRaw<Array<{ nodeId: string }>>`
+                  with recursive backtrack(id, depth) as (
+                    select ${forkFromNodeId}::text as id, 0 as depth
+                    union all
+                    select e."parentNodeId", backtrack.depth + 1
+                    from backtrack
+                    join "BlockEdge" e on e."childNodeId" = backtrack.id
+                    where e."graphId" = ${branch.graphId} 
+                      and e."relation" = 'follows' 
+                      and e."deletedAt" is null
+                      and backtrack.depth < 5
+                  )
+                  select id as "nodeId" 
+                  from backtrack
+                  where id is not null
+                  order by depth desc
+                `;
 
                 return { graphId: branch.graphId, rows };
               });

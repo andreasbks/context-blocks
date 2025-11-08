@@ -205,14 +205,14 @@ export async function POST(
       void (async () => {
         try {
           // Fetch last 5 messages from the timeline leading to fork point
-          const backtrackSql = `
+          const rows = await prisma.$queryRaw<Array<{ nodeId: string }>>`
             with recursive backtrack(id, depth) as (
-              select $1::text as id, 0 as depth
+              select ${forkFromNodeId}::text as id, 0 as depth
               union all
               select e."parentNodeId", backtrack.depth + 1
               from backtrack
               join "BlockEdge" e on e."childNodeId" = backtrack.id
-              where e."graphId" = $2 
+              where e."graphId" = ${graphId} 
                 and e."relation" = 'follows' 
                 and e."deletedAt" is null
                 and backtrack.depth < 5
@@ -222,12 +222,6 @@ export async function POST(
             where id is not null
             order by depth desc
           `;
-
-          const rows = await prisma.$queryRawUnsafe<Array<{ nodeId: string }>>(
-            backtrackSql,
-            forkFromNodeId,
-            graphId
-          );
 
           const recentMessages: Message[] = [];
           for (const { nodeId } of rows) {
