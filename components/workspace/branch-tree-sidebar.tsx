@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { ChevronLeft, ChevronRight, GitBranch } from "lucide-react";
 
-import { BranchTreeNode } from "@/components/dashboard/branch-tree-node";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BranchTreeNode } from "@/components/workspace/branch-tree-node";
 import { cn } from "@/lib/utils";
 import type { Branch } from "@/lib/utils/branch-tree";
 import { buildBranchTree } from "@/lib/utils/branch-tree";

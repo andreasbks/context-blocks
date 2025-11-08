@@ -20,7 +20,7 @@
 
 ## 2) MVP user journeys
 
-1. Graphs list (dashboard)
+1. Graphs list (workspace)
 
 - View graphs ordered by `lastActivityAt`
 - Create graph (title + first message) → navigate to chat view
@@ -43,7 +43,7 @@
 
 Pages
 
-- `app/dashboard/page.tsx` — graphs list + start graph modal
+- `app/workspace/page.tsx` — graphs list + start graph modal (workspace view)
 - `app/chat/[branchId]/page.tsx` — chat view (timeline + composer + toolbar)
 
 Core components

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 
 import { AuthButton } from "../auth/auth-button";
-import { QuotaIndicator } from "../dashboard/quota-indicator";
 import { ThemeSwitcher } from "../theme-switcher";
+import { QuotaIndicator } from "../workspace/quota-indicator";
 
 export default function Navbar() {
   const { isSignedIn } = useAuth();

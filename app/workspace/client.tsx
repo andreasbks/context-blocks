@@ -5,9 +5,9 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
-import { BranchTreeSidebar } from "@/components/dashboard/branch-tree-sidebar";
-import { ChatArea } from "@/components/dashboard/chat-area";
-import { Sidebar } from "@/components/dashboard/sidebar";
+import { BranchTreeSidebar } from "@/components/workspace/branch-tree-sidebar";
+import { ChatArea } from "@/components/workspace/chat-area";
+import { Sidebar } from "@/components/workspace/sidebar";
 import {
   GraphDetailResponse,
   GraphsListResponse,
@@ -39,7 +39,7 @@ interface ForkContext {
   messageText: string;
 }
 
-export default function DashboardClient() {
+export default function WorkspaceClient() {
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
