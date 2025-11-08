@@ -12,8 +12,8 @@ export default function Navbar() {
   const { isSignedIn } = useAuth();
 
   return (
-    <nav className="w-full flex justify-center border-b border-border/50 bg-background/95 backdrop-blur-sm h-16 fixed top-0 z-40">
-      <div className="w-full max-w-7xl flex justify-between items-center px-6 text-sm">
+    <nav className="w-full border-b border-border/50 bg-background/95 backdrop-blur-sm h-16 fixed top-0 z-40">
+      <div className="w-full h-full flex justify-between items-center px-6 text-sm">
         <div className="flex gap-5 items-center">
           <Link
             href={"/"}
