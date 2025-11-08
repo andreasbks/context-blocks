@@ -3,7 +3,6 @@
 import { GitBranch } from "lucide-react";
 import { z } from "zod";
 
-import { MarkdownContent } from "@/components/markdown-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LinearResponse } from "@/lib/api/schemas/responses";
@@ -99,7 +98,7 @@ export function MessageItem({
               className="opacity-0 group-hover/message:opacity-100 transition-opacity h-7 px-2 text-xs"
             >
               <GitBranch className="mr-1.5 h-3.5 w-3.5" />
-              Fork from here
+              Branch
             </Button>
           )}
           <div className="text-xs text-muted-foreground">
@@ -111,8 +110,8 @@ export function MessageItem({
       </div>
 
       {/* Block Content */}
-      <div className="px-5 py-4">
-        <MarkdownContent content={getBlockText(item.block)} />
+      <div className="px-5 py-4 whitespace-pre-wrap leading-relaxed text-foreground">
+        {getBlockText(item.block)}
       </div>
 
       {/* References */}

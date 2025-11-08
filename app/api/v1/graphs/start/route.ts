@@ -1,4 +1,3 @@
-import { generateGraphName } from "@/lib/ai/naming";
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
 import {
@@ -12,7 +11,6 @@ import { StartGraphResponse } from "@/lib/api/schemas/responses";
 import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
-import { ensureUniqueGraphTitle } from "@/lib/utils/unique-name";
 
 export async function POST(req: Request) {
   try {
@@ -58,12 +56,12 @@ export async function POST(req: Request) {
       return Errors.validation("Invalid request body", parsed.error.flatten());
     }
     log.info({ event: "validation_result", ok: true });
-    const { firstMessage, branchName } = parsed.data;
+    const { title, firstMessage, branchName } = parsed.data;
 
     const txStart = Date.now();
     const result = await prisma.$transaction(async (tx) => {
       const graph = await tx.graph.create({
-        data: { userId: owner.id, title: "Generating name..." },
+        data: { userId: owner.id, title: title ?? null },
       });
 
       const block = await tx.contextBlock.create({
@@ -124,40 +122,6 @@ export async function POST(req: Request) {
 
     const res = validateAndSend(result, StartGraphResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
-
-    // Asynchronously generate and update the graph name (don't await)
-    void (async () => {
-      try {
-        const messageText =
-          typeof firstMessage.content === "string"
-            ? firstMessage.content
-            : firstMessage.content.text;
-
-        const generatedName = await generateGraphName(messageText);
-        if (generatedName) {
-          const uniqueName = await ensureUniqueGraphTitle(
-            owner.id,
-            generatedName
-          );
-          await prisma.graph.update({
-            where: { id: result.graph.id },
-            data: { title: uniqueName },
-          });
-          log.info({
-            event: "graph_name_generated",
-            graphId: result.graph.id,
-            name: uniqueName,
-          });
-        }
-      } catch (err) {
-        log.error({
-          event: "graph_name_generation_failed",
-          graphId: result.graph.id,
-          error: err,
-        });
-      }
-    })();
-
     return res;
   } catch (err) {
     console.error("/v1/graphs:start error", err);

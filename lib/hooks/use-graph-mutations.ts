@@ -43,7 +43,7 @@ export function useGraphMutations() {
           "Idempotency-Key": crypto.randomUUID(),
         },
         body: JSON.stringify({
-          title: title ?? "Generating name...",
+          title: title ?? "Untitled Session",
           firstMessage: {
             author: "user",
             content: { text: firstMessage },
@@ -75,7 +75,7 @@ export function useGraphMutations() {
       // Optimistically add new graph
       const optimisticGraph: GraphListItem = {
         id: `optimistic-${Date.now()}`,
-        title: title ?? "Generating name...",
+        title: title ?? "Untitled Session",
         createdAt: new Date().toISOString(),
         lastActivityAt: new Date().toISOString(),
       };

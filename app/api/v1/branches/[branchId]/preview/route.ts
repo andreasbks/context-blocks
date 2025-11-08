@@ -34,48 +34,54 @@ export async function GET(
     if (!br) return Errors.notFound("Branch");
     if (br.graph.userId !== owner.id) return Errors.forbidden();
 
-    // Get the first 2 messages starting from the branch's divergence point
-    // Strategy: backtrack from tip to root, then take the first 2 messages after the root
-    if (!br.tipNodeId) {
-      // Empty branch (no tip yet)
+    // Get the first 3 messages starting from the branch's divergence point
+    // This means starting from the CHILD of the rootNode (the first unique message in this branch)
+    if (!br.rootNodeId) {
+      // Empty branch (no root yet)
       return validateAndSend({ items: [] }, BranchPreviewResponse, 200);
     }
 
-    // Backtrack from tip to root to get the full timeline of THIS branch
-    const backtrackSql = `
-      with recursive backtrack(id, depth) as (
+    // First, find the child of the root node (the divergence point)
+    const firstEdge = await prisma.blockEdge.findFirst({
+      where: {
+        graphId: br.graphId,
+        parentNodeId: br.rootNodeId,
+        relation: "follows",
+        deletedAt: null,
+      },
+      select: { childNodeId: true },
+    });
+
+    // If there's no child, the branch hasn't diverged yet (just the root node)
+    if (!firstEdge) {
+      return validateAndSend({ items: [] }, BranchPreviewResponse, 200);
+    }
+
+    // Walk forward from the first divergent node (child of root) following 'follows' edges
+    const forwardWalkSql = `
+      with recursive walk(id, depth) as (
         select $1::text as id, 0 as depth
         union all
-        select e."parentNodeId", backtrack.depth + 1
-        from backtrack
-        join "BlockEdge" e on e."childNodeId" = backtrack.id
-        join "GraphNode" pn on pn.id = e."parentNodeId"
+        select e."childNodeId", walk.depth + 1
+        from walk
+        join "BlockEdge" e on e."parentNodeId" = walk.id
+        join "GraphNode" cn on cn.id = e."childNodeId"
         where e."graphId" = $2 
           and e."relation" = 'follows' 
           and e."deletedAt" is null
-          and pn."hiddenAt" is null
-          and backtrack.depth < 200
+          and cn."hiddenAt" is null
+          and walk.depth < 3
       )
       select id as "nodeId", depth 
-      from backtrack
+      from walk
       where id is not null
-      order by depth desc
+      order by depth asc
+      limit 3
     `;
 
-    const allRows = await prisma.$queryRawUnsafe<
+    const rows = await prisma.$queryRawUnsafe<
       Array<{ nodeId: string; depth: number }>
-    >(backtrackSql, br.tipNodeId, br.graphId);
-
-    // Find the index of the root node in the timeline
-    const rootIndex = allRows.findIndex((row) => row.nodeId === br.rootNodeId);
-
-    // If root not found or it's at the end, no preview available
-    if (rootIndex === -1 || rootIndex === allRows.length - 1) {
-      return validateAndSend({ items: [] }, BranchPreviewResponse, 200);
-    }
-
-    // Get the first 2 messages AFTER the root (unique to this branch)
-    const rows = allRows.slice(rootIndex + 1, rootIndex + 3);
+    >(forwardWalkSql, firstEdge.childNodeId, br.graphId);
 
     const items = await Promise.all(
       rows.map(async ({ nodeId }) => {

@@ -1,4 +1,3 @@
-import { type Message, generateBranchName } from "@/lib/ai/naming";
 import { requireOwner } from "@/lib/api/auth";
 import { Errors, jsonError } from "@/lib/api/errors";
 import {
@@ -17,7 +16,6 @@ import { parseParams } from "@/lib/api/validators";
 import { validateAndSend } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
-import { ensureUniqueBranchName } from "@/lib/utils/unique-name";
 
 export async function POST(
   req: Request,
@@ -65,8 +63,14 @@ export async function POST(
       return Errors.validation("Invalid request body", parsed.error.flatten());
     }
     log.info({ event: "validation_result", ok: true });
-    const { author, content, model, expectedVersion, forkFromNodeId } =
-      parsed.data;
+    const {
+      author,
+      content,
+      model,
+      expectedVersion,
+      forkFromNodeId,
+      newBranchName,
+    } = parsed.data;
 
     // Preload branch and verify ownership (clear error semantics)
     const paramOk = await parseParams(params, BranchIdParam);
@@ -98,7 +102,7 @@ export async function POST(
         ? await tx.branch.create({
             data: {
               graphId: baseBranch.graphId,
-              name: "Generating name...",
+              name: newBranchName ?? `fork-${forkFromNodeId.slice(-6)}`,
               rootNodeId: forkFromNodeId,
               tipNodeId: forkFromNodeId,
               version: 0,
@@ -197,89 +201,6 @@ export async function POST(
         ? validateAndSend(result, AppendForkResponse, 200)
         : validateAndSend(result, AppendResponse, 200);
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
-
-    // Asynchronously generate and update branch name if fork was created
-    if ("branch" in result && forkFromNodeId && result.branch) {
-      const newBranchId = result.branch.id;
-      const graphId = baseBranch.graphId;
-      void (async () => {
-        try {
-          // Fetch last 5 messages from the timeline leading to fork point
-          const backtrackSql = `
-            with recursive backtrack(id, depth) as (
-              select $1::text as id, 0 as depth
-              union all
-              select e."parentNodeId", backtrack.depth + 1
-              from backtrack
-              join "BlockEdge" e on e."childNodeId" = backtrack.id
-              where e."graphId" = $2 
-                and e."relation" = 'follows' 
-                and e."deletedAt" is null
-                and backtrack.depth < 5
-            )
-            select id as "nodeId" 
-            from backtrack
-            where id is not null
-            order by depth desc
-          `;
-
-          const rows = await prisma.$queryRawUnsafe<Array<{ nodeId: string }>>(
-            backtrackSql,
-            forkFromNodeId,
-            graphId
-          );
-
-          const recentMessages: Message[] = [];
-          for (const { nodeId } of rows) {
-            const node = await prisma.graphNode.findUnique({
-              where: { id: nodeId },
-              include: { block: true },
-            });
-            if (node && !node.hiddenAt) {
-              const contentText =
-                typeof node.block.content === "string"
-                  ? node.block.content
-                  : ((node.block.content as { text?: string })?.text ?? "");
-              recentMessages.push({
-                role: node.block.kind === "user" ? "user" : "assistant",
-                content: contentText,
-              });
-            }
-          }
-
-          // Add the fork message as context
-          const forkMessageText =
-            typeof content === "string" ? content : content.text;
-
-          const generatedName = await generateBranchName(
-            recentMessages,
-            forkMessageText
-          );
-          if (generatedName) {
-            const uniqueName = await ensureUniqueBranchName(
-              graphId,
-              generatedName
-            );
-            await prisma.branch.update({
-              where: { id: newBranchId },
-              data: { name: uniqueName },
-            });
-            log.info({
-              event: "branch_name_generated",
-              branchId: newBranchId,
-              name: uniqueName,
-            });
-          }
-        } catch (err) {
-          log.error({
-            event: "branch_name_generation_failed",
-            branchId: newBranchId,
-            error: err,
-          });
-        }
-      })();
-    }
-
     return res;
   } catch (err) {
     if (err instanceof Response) return err;

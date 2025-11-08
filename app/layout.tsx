@@ -16,20 +16,20 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Context Blocks | Think in Branches, Not Lines",
+  title: "Context Blocks Chat",
   description:
-    "Rethinking AI chat from the ground up. Context Blocks is modular and nonlinear—branch anywhere, explore what-ifs, and never lose context again. Think Git for conversations, Lego for ideas.",
+    "Modular, branchable AI chat platform. Branch, remix, and merge conversations to explore ideas in parallel.",
   openGraph: {
-    title: "Context Blocks | Think in Branches, Not Lines",
+    title: "Context Blocks Chat",
     description:
-      "Rethinking AI chat from the ground up. Context Blocks is modular and nonlinear—branch anywhere, explore what-ifs, and never lose context again.",
+      "Modular, branchable AI chat platform. Branch, remix, and merge conversations to explore ideas in parallel.",
     type: "website",
   },
   twitter: {
-    card: "summary_large_image",
-    title: "Context Blocks | Think in Branches, Not Lines",
+    card: "summary",
+    title: "Context Blocks Chat",
     description:
-      "Rethinking AI chat from the ground up. Branch anywhere, explore what-ifs, and never lose context again.",
+      "Modular, branchable AI chat platform. Branch, remix, and merge conversations to explore ideas in parallel.",
   },
 };
 
@@ -59,7 +59,9 @@ export default function RootLayout({
             >
               <div className="min-h-screen flex flex-col">
                 <Navbar />
-                <main className="flex-1 w-full pt-16">{children}</main>
+                <main className="flex-1 w-full pt-16 flex justify-center items-center">
+                  {children}
+                </main>
               </div>
               <Toaster />
             </ThemeProvider>

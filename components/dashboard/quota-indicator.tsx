@@ -68,11 +68,13 @@ export function QuotaIndicator() {
         <TooltipContent>
           <div className="space-y-1">
             <div className="font-semibold">Token Quota</div>
-            <div className="text-xs opacity-90">
+            <div className="text-xs text-muted-foreground">
               {quota.used.toLocaleString()} / {quota.limit.toLocaleString()}{" "}
               tokens used
             </div>
-            <div className="text-xs opacity-90">Resets on {resetDate}</div>
+            <div className="text-xs text-muted-foreground">
+              Resets on {resetDate}
+            </div>
           </div>
         </TooltipContent>
       </Tooltip>
