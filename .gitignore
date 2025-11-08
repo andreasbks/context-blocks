@@ -45,3 +45,6 @@ next-env.d.ts
 /planning
 
 /lib/generated/prisma
+
+# clerk configuration (can include secrets)
+/.clerk/

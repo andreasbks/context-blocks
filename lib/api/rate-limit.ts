@@ -1,4 +1,9 @@
 import { Errors } from "@/lib/api/errors";
+import {
+  RATE_LIMIT_READ_PER_MINUTE,
+  RATE_LIMIT_SSE_CONCURRENT,
+  RATE_LIMIT_WRITE_PER_MINUTE,
+} from "@/lib/config";
 
 type TimestampMs = number;
 
@@ -22,7 +27,7 @@ const maps = globalMaps.__rateMaps!;
 export function checkWriteRateLimit(
   userId: string,
   routeKey: string,
-  maxPerMinute = 60
+  maxPerMinute = RATE_LIMIT_WRITE_PER_MINUTE
 ): Response | null {
   const key = `${userId}:${routeKey}`;
   const now = Date.now();
@@ -47,7 +52,7 @@ export function checkWriteRateLimit(
 export function checkReadRateLimit(
   userId: string,
   routeKey: string,
-  maxPerMinute = 300
+  maxPerMinute = RATE_LIMIT_READ_PER_MINUTE
 ): Response | null {
   // Defensive initialization for hot-reload scenarios
   if (!maps.readBuckets) {
@@ -77,7 +82,7 @@ export function checkReadRateLimit(
 export function acquireSSESlot(
   userId: string,
   _routeKey: string,
-  maxConcurrent = 8
+  maxConcurrent = RATE_LIMIT_SSE_CONCURRENT
 ): { release: () => void; current: number } | Response {
   const current = maps.sseCounts.get(userId) ?? 0;
   if (current >= maxConcurrent) {

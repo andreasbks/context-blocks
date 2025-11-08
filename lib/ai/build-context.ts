@@ -1,3 +1,4 @@
+import { CONTEXT_MAX_NODES, CONTEXT_TOKEN_LIMIT } from "@/lib/config";
 import { prisma } from "@/lib/db";
 
 import { BlockKind } from "../generated/prisma";
@@ -8,8 +9,8 @@ const estimateTokens = (text: string) =>
 
 export async function buildSimpleContext(
   branchId: string,
-  tokenLimit = 10000,
-  maxNodes = 20
+  tokenLimit = CONTEXT_TOKEN_LIMIT,
+  maxNodes = CONTEXT_MAX_NODES
 ) {
   try {
     // Fetch up to 20 nodes walking backwards from branch tip

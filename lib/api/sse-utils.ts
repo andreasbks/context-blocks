@@ -2,6 +2,7 @@ import { ErrorEnvelopeSchema } from "@/lib/api/schemas/shared";
 import { SSEKeepaliveSchema } from "@/lib/api/schemas/sse";
 import { type SSEContext } from "@/lib/api/sse-context";
 import { writeSSE } from "@/lib/api/validators";
+import { SSE_KEEPALIVE_INTERVAL_MS } from "@/lib/config";
 
 /**
  * Sends a quota exceeded error over SSE and closes the connection.
@@ -92,7 +93,7 @@ export async function sendInternalError(
  */
 export function startKeepalive(
   sse: SSEContext,
-  intervalMs: number = 15000
+  intervalMs: number = SSE_KEEPALIVE_INTERVAL_MS
 ): NodeJS.Timeout {
   return setInterval(() => {
     void writeSSE(SSEKeepaliveSchema, "keepalive", {}, sse);

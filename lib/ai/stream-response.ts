@@ -1,5 +1,6 @@
 import { openai } from "@/lib/ai/openai";
 import { type Logger } from "@/lib/api/logger";
+import { OPENAI_MODEL } from "@/lib/config";
 
 export interface StreamResponseOptions {
   context: string;
@@ -30,7 +31,7 @@ export async function streamOpenAIResponse(
     requestStartedAt,
   } = options;
 
-  const model = requestedModel ?? process.env["OPENAI_MODEL"] ?? "gpt-4";
+  const model = requestedModel ?? OPENAI_MODEL;
   const input = context; // context is already built with system prompt
 
   let accumulatedResponse = "";
