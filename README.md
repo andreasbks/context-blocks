@@ -1,102 +1,234 @@
-# Context Blocks
+<div align="center">
+
+# 🌿 Context Blocks
 
 **Rethinking AI chat from the ground up.**
 
-Traditional chat is linear. **Context Blocks** is nonlinear, built around modular "blocks" you can
-move, branch, remix, and reuse.
+Traditional chat is linear. Context Blocks is nonlinear, built around modular "blocks" you can
+branch, navigate, and reuse.
 
-Think Git for conversations. Think Lego for ideas.
+**Think Git for conversations. Think Lego for ideas.**
 
-## The Problem
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+[Features](#-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) •
+[API](#-api-overview) • [Contributing](#-contributing)
+
+</div>
+
+---
+
+## 🎯 The Problem
 
 Current AI chat interfaces trap you in a single timeline:
 
-- Exploring "what if" destroys your current thread
-- Context gets buried as conversations grow
-- You can't reuse insights across chats
-- Comparing alternatives means starting over
+- ❌ Exploring "what if" destroys your current thread
+- ❌ Context gets buried as conversations grow
+- ❌ You can't compare alternatives side-by-side
+- ❌ Starting over means losing everything
 
 **Chat shouldn't force you to think in one direction.**
 
-## The Solution
+## 💡 The Solution
 
-Context Blocks transforms conversations into a **modular, visual canvas** where every piece of
-context is interactive.
+Context Blocks transforms conversations into a **modular, visual canvas** where every message is a
+potential branch point.
 
-### What is a Block?
+```mermaid
+graph LR
+    A[AI: Here are some things you need to think about] --> B[User: Let's check out A]
+    A --> C[User: Let's check out B]
+    B --> D[AI: Sure here is A]
+    B --> E[AI: *Another model* Sure here is A]
+    C --> F[AI: Here is B]
 
-A **Block** is any discrete unit of context:
+    style A fill:#e1f5ff
+    style B fill:#fff4e6
+    style C fill:#fff4e6
+    style D fill:#e1f5ff
+    style E fill:#e1f5ff
+    style F fill:#e1f5ff
+```
 
-- A single message
-- A group of related messages
-- An imported document, file, or chunk of text
-- An LLM-generated summary or suggestion
+## ✨ Features
 
-**Blocks are modular and interactive—like Lego for ideas.**
+### 🌿 **Branch Anywhere**
 
-## Why Blocks?
+Fork from any message to explore alternatives without losing your place. Every conversation becomes
+a tree of possibilities.
 
-### 🌿 Branch Your Thinking
+### 📦 **Blocks are Immutable**
 
-Swipe or drag any block to the left to fork a new conversation—explore "what if" without losing your
-place.
+Each message is a reusable building block. Reference them across conversations or build a personal
+context library.
 
-### 📥 Ingest New Context Instantly
+### 🎨 **Visual Navigation**
 
-Drop in a block from another chat, your personal context library, or an external source. The LLM can
-reason with it immediately.
+See your conversation as a graph. Jump between branches, compare approaches, and navigate
+non-linearly.
 
-### 🎨 Remix and Merge
+### ⚡ **Real-time Streaming**
 
-Bring together blocks from different threads, merging insights or comparing alternatives. Remix
-ideas with drag-and-drop.
+Stream AI responses with Server-Sent Events (SSE) for instant feedback, even on branches.
 
-### 🗺️ Organize Visually
+### 🔒 **Built for Scale**
 
-Conversations become a tree or graph—where context is clear, navigable, and reusable.
+- Optimistic concurrency control with version tracking
+- Idempotency for reliable operations
+- Rate limiting and quota management
+- PostgreSQL-backed with Prisma ORM
 
-## How It Works
+### 🎨 **Prompt Management**
 
-1. **Chat normally** — every message becomes a block
-2. **Branch anywhere** — swipe left on any block to explore alternative paths
-3. **Import context** — drop in files, docs, or blocks from other chats
-4. **Navigate visually** — see your conversation as a tree, jump between branches
-5. **Reuse everything** — save blocks to your library, bring them into future conversations
+Integrated with [Langfuse](https://langfuse.com) for version-controlled prompt management. Update
+system prompts without redeploying.
 
-## Tech Stack
+---
 
-Built with a modern, type-safe stack:
+## 🏗️ Architecture
 
-- **Frontend:** Next.js 15 (App Router) + React
-- **Auth:** Clerk (`@clerk/nextjs`)
-- **Database:** Neon Postgres + Prisma ORM
-- **State Management:** TanStack Query
-- **UI:** shadcn/ui, Radix UI, Tailwind CSS
-- **AI:** OpenAI API with streaming support
-- **Type Safety:** TypeScript + Zod validation
+### Data Model
 
-## Getting Started
+Context Blocks uses a **graph-based data model** where conversations are directed acyclic graphs
+(DAGs):
+
+```mermaid
+erDiagram
+    User ||--o{ Graph : owns
+    User ||--o{ ContextBlock : creates
+    Graph ||--o{ GraphNode : contains
+    Graph ||--o{ Branch : has
+    Graph ||--o{ BlockEdge : contains
+    ContextBlock ||--o{ GraphNode : instantiated_as
+    GraphNode ||--o{ BlockEdge : connects
+    Branch }o--|| GraphNode : root
+    Branch }o--|| GraphNode : tip
+
+    User {
+        string id
+        string clerkUserId
+        string email
+    }
+
+    Graph {
+        string id
+        string userId
+        string title
+        datetime lastActivityAt
+    }
+
+    ContextBlock {
+        string id
+        enum kind
+        json content
+        string model
+        int tokenCount
+        boolean public
+    }
+
+    GraphNode {
+        string id
+        string graphId
+        string blockId
+        datetime hiddenAt
+    }
+
+    BlockEdge {
+        string id
+        string graphId
+        string parentNodeId
+        string childNodeId
+        enum relation
+        datetime deletedAt
+    }
+
+    Branch {
+        string id
+        string graphId
+        string rootNodeId
+        string tipNodeId
+        int version
+    }
+```
+
+### Key Concepts
+
+| Concept          | Description                                                             |
+| ---------------- | ----------------------------------------------------------------------- |
+| **Graph**        | Your conversation canvas.                                               |
+| **ContextBlock** | Immutable content (user or assistant message).                          |
+| **GraphNode**    | An instance of a block within a graph (enables reuse).                  |
+| **BlockEdge**    | Typed connection between nodes connected to a branch.                   |
+| **Branch**       | A pointer with `rootNodeId`, `tipNodeId`, and `version` for navigation. |
+
+### Tech Stack
+
+```
+Frontend
+├── Next.js 15 (App Router)
+├── React 19
+├── TanStack Query (state management)
+├── Tailwind CSS + shadcn/ui
+└── TypeScript
+
+Backend (API Routes)
+├── Next.js API Routes
+├── Zod (validation)
+├── Streaming SSE responses
+└── Rate limiting + quota tracking
+
+Database
+├── Neon Postgres
+├── Prisma ORM
+└── Optimistic concurrency control
+
+AI/Prompts
+├── OpenAI API (streaming)
+└── Langfuse (prompt management)
+
+Auth
+└── Clerk (@clerk/nextjs)
+
+Dev Tools
+├── ESLint + Prettier
+├── Husky + lint-staged
+├── Commitlint
+└── TypeScript strict mode
+```
+
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 18+ and pnpm
-- [Clerk](https://clerk.com) account (free tier available)
-- [Neon](https://neon.tech) Postgres database (free tier available)
-- OpenAI API key
+- **Node.js 18+** and **pnpm**
+- **[Clerk](https://clerk.com)** account (free tier)
+- **[Neon](https://neon.tech)** Postgres database (free tier)
+- **OpenAI API key**
+- **[Langfuse](https://langfuse.com)** account (optional, for prompt management)
 
 ### Installation
 
-1. **Clone and install dependencies:**
+1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/yourusername/context-blocks.git
+git clone https://github.com/YOUR_USERNAME/context-blocks.git
 cd context-blocks
+```
+
+2. **Install dependencies:**
+
+```bash
 pnpm install
 ```
 
-2. **Set up environment variables:**
+3. **Set up environment variables:**
 
-Create `.env.local` in the root directory:
+Create `.env.local`:
 
 ```bash
 # Clerk Auth
@@ -104,49 +236,229 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
 
 # Neon Database (use pooled connection)
-DATABASE_URL="postgresql://<user>:<password>@<neon-host>/<db>?sslmode=require&pgbouncer=true&connect_timeout=15"
+DATABASE_URL="postgresql://user:password@host/db?sslmode=require&pgbouncer=true&connect_timeout=15"
 
 # OpenAI
 OPENAI_API_KEY=sk-...
+
+# Langfuse (Optional - for prompt management)
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+
+# Optional Configuration
+# OPENAI_MODEL=gpt-4
+# QUOTA_LIMIT=100000
+# RATE_LIMIT_WRITE_PER_MINUTE=60
 ```
 
-3. **Run database migrations:**
+4. **Run database migrations:**
 
 ```bash
 pnpm prisma migrate dev
 ```
 
-4. **Start the development server:**
+5. **Set up Langfuse prompts (optional):**
+
+```bash
+pnpm setup:langfuse
+```
+
+6. **Start the development server:**
 
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign up to start chatting!
+Open [http://localhost:3000](http://localhost:3000) 🎉
 
-### Build for Production
+### Production Build
 
 ```bash
 pnpm build
 pnpm start
 ```
 
-## Contributing
+---
 
-This project is in active development. Contributions, issues, and feature requests are welcome!
+## 🔌 API Overview
 
-1. Fork the repo
-2. Create your feature branch (`git checkout -b feat/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feat/amazing-feature`)
+Context Blocks uses an **intent-driven API** where each user action maps to a single endpoint.
+
+### Core Endpoints
+
+| Endpoint                                | Method     | Description                    |
+| --------------------------------------- | ---------- | ------------------------------ |
+| `/api/v1/graphs/start`                  | POST       | Create graph + first message   |
+| `/api/v1/graphs`                        | GET        | List all graphs                |
+| `/api/v1/graphs/{id}`                   | GET/DELETE | Get or delete graph            |
+| `/api/v1/branches/{id}/generate/stream` | POST       | AI generates response (SSE)    |
+| `/api/v1/branches/{id}/send/stream`     | POST       | User sends + AI responds (SSE) |
+| `/api/v1/branches/{id}/append`          | POST       | User appends message           |
+| `/api/v1/branches/{id}/linear`          | GET        | Get linear history             |
+| `/api/v1/branches/{id}/preview`         | GET        | Preview branch without content |
+| `/api/v1/quota`                         | GET        | Check token usage quota        |
+
+### Branching Support
+
+Every mutating endpoint supports **in-call forking** via query parameters:
+
+```typescript
+{
+  forkFromNodeId?: string;  // Create new branch from this node
+  newBranchName?: string;   // Optional custom branch name
+}
+```
+
+### SSE Streaming Format
+
+Endpoints with `/stream` use Server-Sent Events:
+
+```
+event: delta
+data: {"text": "Hello"}
+
+event: delta
+data: {"text": " world"}
+
+event: final
+data: {"items": [...], "newTip": "n_123", "version": 5}
+```
+
+### Idempotency
+
+All write operations support idempotency via the `Idempotency-Key` header (cached 24h).
+
+---
+
+## 🧪 Development
+
+### Quality Checks
+
+```bash
+# Run all checks
+pnpm quality
+
+# Individual checks
+pnpm typecheck      # TypeScript
+pnpm lint           # ESLint
+pnpm format:check   # Prettier
+```
+
+### Database Operations
+
+```bash
+# Generate Prisma client
+pnpm prisma generate
+
+# Create migration
+pnpm prisma migrate dev --name your_migration_name
+
+# View database
+pnpm prisma studio
+```
+
+### Git Hooks
+
+Pre-commit hooks automatically:
+
+- Format code with Prettier
+- Fix ESLint issues
+- Validate commit messages (Conventional Commits)
+
+## 🎨 Prompt Management with Langfuse
+
+Context Blocks integrates [Langfuse](https://langfuse.com) for centralized prompt management:
+
+- 📝 Version control for system prompts
+- 🏷️ Environment-based labels (production, staging, development)
+- 🔄 5-minute cache with graceful fallback
+- 🚀 Update prompts without redeploying
+
+### Setup
+
+1. Create Langfuse account at [cloud.langfuse.com](https://cloud.langfuse.com)
+2. Add credentials to `.env.local`
+3. Run setup script:
+
+```bash
+pnpm setup:langfuse
+```
+
+The script automatically creates your system prompt in Langfuse with both `production` and
+`development` labels.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! This project follows
+[Conventional Commits](https://www.conventionalcommits.org/).
+
+### Getting Started
+
+1. Fork the repository
+2. Create your feature branch: `git checkout -b feat/amazing-feature`
+3. Commit your changes: `git commit -m 'feat: add amazing feature'`
+4. Push to the branch: `git push origin feat/amazing-feature`
 5. Open a Pull Request
 
-## License
+### Commit Message Format
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```
+<type>: <description>
 
-## Contact
+[optional body]
+```
 
-Built with ❤️ by Andreas
+**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`
 
-**Ready to think nonlinearly?**
+### Code Quality
+
+All PRs must pass:
+
+- ✅ TypeScript type checking
+- ✅ ESLint rules
+- ✅ Prettier formatting
+- ✅ Conventional commit format
+
+## 🔐 Security
+
+- All environment variables are gitignored
+- Clerk handles authentication and user management
+- API routes validate ownership before mutations
+- Rate limiting prevents abuse
+- Idempotency prevents duplicate operations
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+
+- [Next.js](https://nextjs.org/) - React framework
+- [Clerk](https://clerk.com/) - Authentication
+- [Neon](https://neon.tech/) - Serverless Postgres
+- [Prisma](https://www.prisma.io/) - ORM
+- [OpenAI](https://openai.com/) - AI completions
+- [Langfuse](https://langfuse.com/) - Prompt management
+- [shadcn/ui](https://ui.shadcn.com/) - UI components
+- [Tailwind CSS](https://tailwindcss.com/) - Styling
+
+---
+
+<div align="center">
+
+**Ready to think nonlinearly?** 🌿
+
+Built with ❤️ by [Andreas](https://github.com/YOUR_USERNAME)
+
+[⭐ Star this repo](https://github.com/YOUR_USERNAME/context-blocks) if you find it useful!
+
+</div>

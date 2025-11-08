@@ -1,3 +1,11 @@
+import { getLangfuseClient } from "@/lib/ai/langfuse-client";
+import { baseLogger } from "@/lib/api/logger";
+import {
+  LANGFUSE_ENABLED,
+  LANGFUSE_PROMPT_LABEL,
+  LANGFUSE_SYSTEM_PROMPT_NAME,
+} from "@/lib/config";
+
 /**
  * System prompt configuration for the LLM assistant
  * This prompt is prepended to all user interactions
@@ -56,17 +64,92 @@ This is the latest context to answer the user's question:
 `;
 
 /**
- * Get the system prompt for LLM interactions.
- * Can be overridden via environment variable SYSTEM_PROMPT
+ * Cache for the Langfuse prompt to avoid fetching on every request
+ * Structure: { prompt: string, fetchedAt: number }
  */
-export function getSystemPrompt(): string {
-  return process.env.SYSTEM_PROMPT?.trim() || DEFAULT_SYSTEM_PROMPT;
+let promptCache: { prompt: string; fetchedAt: number } | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get the system prompt for LLM interactions.
+ * Priority order:
+ * 1. Environment variable SYSTEM_PROMPT (for manual override)
+ * 2. Langfuse prompt management (if enabled and available)
+ * 3. Hardcoded DEFAULT_SYSTEM_PROMPT (as fallback)
+ */
+export async function getSystemPrompt(): Promise<string> {
+  // 1. Check for environment variable override
+  if (process.env.SYSTEM_PROMPT?.trim()) {
+    return process.env.SYSTEM_PROMPT.trim();
+  }
+
+  // 2. Try to fetch from Langfuse if enabled
+  if (LANGFUSE_ENABLED) {
+    try {
+      // Check cache first
+      if (promptCache && Date.now() - promptCache.fetchedAt < CACHE_TTL_MS) {
+        return promptCache.prompt;
+      }
+
+      const langfuse = getLangfuseClient();
+      if (langfuse) {
+        const promptObject = await langfuse.prompt.get(
+          LANGFUSE_SYSTEM_PROMPT_NAME,
+          {
+            label: LANGFUSE_PROMPT_LABEL,
+            type: "text",
+          }
+        );
+
+        if (promptObject?.prompt) {
+          const promptText =
+            typeof promptObject.prompt === "string"
+              ? promptObject.prompt
+              : String(promptObject.prompt);
+
+          // Update cache
+          promptCache = {
+            prompt: promptText,
+            fetchedAt: Date.now(),
+          };
+
+          baseLogger.info({
+            event: "langfuse_prompt_fetched",
+            promptName: LANGFUSE_SYSTEM_PROMPT_NAME,
+            label: LANGFUSE_PROMPT_LABEL,
+            version: promptObject.version,
+          });
+
+          return promptText;
+        }
+      }
+    } catch (error) {
+      baseLogger.warn({
+        event: "langfuse_prompt_fetch_failed",
+        error: error instanceof Error ? error.message : String(error),
+        fallback: "using_default_prompt",
+      });
+      // Fall through to default prompt
+    }
+  }
+
+  // 3. Return hardcoded default as fallback
+  return DEFAULT_SYSTEM_PROMPT;
 }
 
 /**
  * Prepend the system prompt to user context for the LLM
  */
-export function buildPromptWithSystem(userContext: string): string {
-  const systemPrompt = getSystemPrompt();
+export async function buildPromptWithSystem(
+  userContext: string
+): Promise<string> {
+  const systemPrompt = await getSystemPrompt();
   return `${systemPrompt}\n\n---\n\n${userContext}`;
+}
+
+/**
+ * Clear the prompt cache (useful for testing or forcing a refresh)
+ */
+export function clearPromptCache(): void {
+  promptCache = null;
 }
