@@ -343,10 +343,10 @@ export async function POST(
           }
         }
       } catch (err) {
-        console.error(
-          "POST /v1/branches/{branchId}/generate/stream background error",
-          err
-        );
+        log.error({
+          event: "background_error",
+          error: err,
+        });
         await sendInternalError(sse);
       } finally {
         void sse.writer.closed.then(() => {
@@ -368,7 +368,11 @@ export async function POST(
     });
     return res;
   } catch (err) {
-    console.error("POST /v1/branches/{branchId}/generate/stream error", err);
+    const { log } = createRequestLogger(req, {
+      route: "POST /v1/branches/:id/generate/stream",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
     queueMicrotask(async () => {
       await sendInternalError(sse);
     });

@@ -1,5 +1,5 @@
 import { requireOwner } from "@/lib/api/auth";
-import { Errors } from "@/lib/api/errors";
+import { jsonError } from "@/lib/api/errors";
 import { createRequestLogger } from "@/lib/api/logger";
 import { checkQuota } from "@/lib/api/quota";
 import { checkReadRateLimit } from "@/lib/api/rate-limit";
@@ -45,7 +45,11 @@ export async function GET(req: Request) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("GET /v1/quota error", err);
-    return Errors.notFound("Quota");
+    const { log } = createRequestLogger(req, {
+      route: "GET /v1/quota",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
+    return jsonError("INTERNAL", "Internal server error");
   }
 }

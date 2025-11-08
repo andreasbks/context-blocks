@@ -432,10 +432,10 @@ export async function POST(
           }
         }
       } catch (err) {
-        console.error(
-          "POST /v1/branches/{branchId}/send/stream background error",
-          err
-        );
+        log.error({
+          event: "background_error",
+          error: err,
+        });
 
         // Handle specific error types without exposing internal details
         let errorCode = "INTERNAL";
@@ -470,7 +470,11 @@ export async function POST(
     log.info({ event: "sse_open", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("POST /v1/branches/{branchId}/send/stream error", err);
+    const { log } = createRequestLogger(req, {
+      route: "POST /v1/branches/:id/send/stream",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
     queueMicrotask(async () => {
       await sendInternalError(sse);
     });

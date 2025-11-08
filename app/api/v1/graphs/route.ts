@@ -1,5 +1,5 @@
 import { requireOwner } from "@/lib/api/auth";
-import { Errors } from "@/lib/api/errors";
+import { jsonError } from "@/lib/api/errors";
 import { createRequestLogger } from "@/lib/api/logger";
 import { GraphsListQuery } from "@/lib/api/schemas/queries";
 import { GraphsListResponse } from "@/lib/api/schemas/responses";
@@ -41,7 +41,11 @@ export async function GET(req: Request) {
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("GET /v1/graphs error", err);
-    return Errors.notFound("Graphs");
+    const { log } = createRequestLogger(req, {
+      route: "GET /v1/graphs",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
+    return jsonError("INTERNAL", "Internal server error");
   }
 }

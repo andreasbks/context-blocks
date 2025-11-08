@@ -215,7 +215,11 @@ export async function POST(
     return res;
   } catch (err) {
     if (err instanceof Response) return err;
-    console.error("POST /v1/branches/{branchId}:append error", err);
+    const { log } = createRequestLogger(req, {
+      route: "POST /v1/branches/:id/append",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
     return jsonError("INTERNAL", "Internal server error");
   }
 }

@@ -102,7 +102,11 @@ export async function GET(
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("GET /v1/branches/{branchId}/preview error", err);
+    const { log } = createRequestLogger(req, {
+      route: "GET /v1/branches/:id/preview",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
     return jsonError("INTERNAL", "Internal server error");
   }
 }

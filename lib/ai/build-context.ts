@@ -1,3 +1,4 @@
+import { baseLogger } from "@/lib/api/logger";
 import { CONTEXT_MAX_NODES, CONTEXT_TOKEN_LIMIT } from "@/lib/config";
 import { prisma } from "@/lib/db";
 
@@ -66,8 +67,14 @@ export async function buildSimpleContext(
     }
 
     return context;
-  } catch (e) {
-    // TODO: Implement proper errors
-    throw new Error("This did not work: " + e);
+  } catch (error) {
+    baseLogger.error({
+      event: "context_build_failed",
+      branchId,
+      error,
+    });
+    throw new Error(
+      `Failed to build context for branch ${branchId}: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
   }
 }
