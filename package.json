@@ -1,4 +1,8 @@
 {
+  "name": "context-blocks",
+  "version": "0.1.0",
+  "description": "Rethinking AI chat from the ground up - modular, nonlinear conversations",
+  "author": "Andreas",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",

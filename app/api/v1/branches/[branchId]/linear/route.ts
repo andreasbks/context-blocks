@@ -56,15 +56,17 @@ export async function GET(
 
     // Backtrack from tip following the 'follows' edges backwards to the conversation start
     // This matches the context-building algorithm and gives the full conversation history
-    const backtrackSql = `
+    const allRows = await prisma.$queryRaw<
+      Array<{ nodeId: string; depth: number }>
+    >`
       with recursive backtrack(id, depth) as (
-        select $1::text as id, 0 as depth
+        select ${br.tipNodeId}::text as id, 0 as depth
         union all
         select e."parentNodeId", backtrack.depth + 1
         from backtrack
         join "BlockEdge" e on e."childNodeId" = backtrack.id
         join "GraphNode" pn on pn.id = e."parentNodeId"
-        where e."graphId" = $2 
+        where e."graphId" = ${br.graphId} 
           and e."relation" = 'follows' 
           and e."deletedAt" is null
           and pn."hiddenAt" is null
@@ -75,10 +77,6 @@ export async function GET(
       where id is not null
       order by depth desc
     `;
-
-    const allRows = await prisma.$queryRawUnsafe<
-      Array<{ nodeId: string; depth: number }>
-    >(backtrackSql, br.tipNodeId, br.graphId);
 
     // Apply cursor-based pagination if needed
     let rows = allRows;
@@ -130,7 +128,11 @@ export async function GET(
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("GET /v1/branches/{branchId}:linear error", err);
+    const { log } = createRequestLogger(req, {
+      route: "GET /v1/branches/:id/linear",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
     return jsonError("INTERNAL", "Internal server error");
   }
 }

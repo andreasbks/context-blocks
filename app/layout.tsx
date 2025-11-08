@@ -4,6 +4,7 @@ import { Geist } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "next-themes";
 
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/lib/providers/query-provider";
 
@@ -47,24 +48,26 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.className} antialiased`}>
-        <ClerkProvider
-          publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-        >
-          <QueryProvider>
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="system"
-              enableSystem
-              disableTransitionOnChange
-            >
-              <div className="min-h-screen flex flex-col">
-                <Navbar />
-                <main className="flex-1 w-full pt-16">{children}</main>
-              </div>
-              <Toaster />
-            </ThemeProvider>
-          </QueryProvider>
-        </ClerkProvider>
+        <ErrorBoundary>
+          <ClerkProvider
+            publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+          >
+            <QueryProvider>
+              <ThemeProvider
+                attribute="class"
+                defaultTheme="system"
+                enableSystem
+                disableTransitionOnChange
+              >
+                <div className="min-h-screen flex flex-col">
+                  <Navbar />
+                  <main className="flex-1 w-full pt-16">{children}</main>
+                </div>
+                <Toaster />
+              </ThemeProvider>
+            </QueryProvider>
+          </ClerkProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

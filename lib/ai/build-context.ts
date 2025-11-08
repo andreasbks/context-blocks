@@ -1,3 +1,5 @@
+import { baseLogger } from "@/lib/api/logger";
+import { CONTEXT_MAX_NODES, CONTEXT_TOKEN_LIMIT } from "@/lib/config";
 import { prisma } from "@/lib/db";
 
 import { BlockKind } from "../generated/prisma";
@@ -8,8 +10,8 @@ const estimateTokens = (text: string) =>
 
 export async function buildSimpleContext(
   branchId: string,
-  tokenLimit = 10000,
-  maxNodes = 20
+  tokenLimit = CONTEXT_TOKEN_LIMIT,
+  maxNodes = CONTEXT_MAX_NODES
 ) {
   try {
     // Fetch up to 20 nodes walking backwards from branch tip
@@ -65,8 +67,14 @@ export async function buildSimpleContext(
     }
 
     return context;
-  } catch (e) {
-    // TODO: Implement proper errors
-    throw new Error("This did not work: " + e);
+  } catch (error) {
+    baseLogger.error({
+      event: "context_build_failed",
+      branchId,
+      error,
+    });
+    throw new Error(
+      `Failed to build context for branch ${branchId}: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
   }
 }

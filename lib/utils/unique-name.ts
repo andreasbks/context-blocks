@@ -1,3 +1,4 @@
+import { baseLogger } from "@/lib/api/logger";
 import { prisma } from "@/lib/db";
 
 /**
@@ -41,7 +42,11 @@ export async function ensureUniqueGraphTitle(
 
     // Safety check to prevent infinite loops
     if (counter > 1000) {
-      console.error("Failed to find unique graph title after 1000 attempts");
+      baseLogger.error({
+        event: "unique_title_exhausted",
+        desiredTitle,
+        attempts: counter,
+      });
       return `${desiredTitle} (${Date.now()})`;
     }
   }
@@ -92,7 +97,11 @@ export async function ensureUniqueBranchName(
 
     // Safety check to prevent infinite loops
     if (counter > 1000) {
-      console.error("Failed to find unique branch name after 1000 attempts");
+      baseLogger.error({
+        event: "unique_branch_name_exhausted",
+        desiredName,
+        attempts: counter,
+      });
       return `${desiredName} (${Date.now()})`;
     }
   }

@@ -160,7 +160,11 @@ export async function POST(req: Request) {
 
     return res;
   } catch (err) {
-    console.error("/v1/graphs:start error", err);
+    const { log } = createRequestLogger(req, {
+      route: "POST /v1/graphs/start",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
     return jsonError("INTERNAL", "Internal server error");
   }
 }

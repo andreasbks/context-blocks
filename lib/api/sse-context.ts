@@ -1,4 +1,10 @@
-export function createSSEContext(keepalive_interval: number = 15000) {
+import { SSE_KEEPALIVE_INTERVAL_MS } from "@/lib/config";
+
+export type SSEContext = ReturnType<typeof createSSEContext>;
+
+export function createSSEContext(
+  keepalive_interval: number = SSE_KEEPALIVE_INTERVAL_MS
+) {
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
 

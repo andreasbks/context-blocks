@@ -1,3 +1,5 @@
+import { baseLogger } from "@/lib/api/logger";
+
 import { openai } from "./openai";
 
 export interface Message {
@@ -32,7 +34,7 @@ export async function generateGraphName(
 
     const generatedName = response.choices[0]?.message?.content?.trim();
     if (!generatedName) {
-      console.error("LLM returned empty name for graph");
+      baseLogger.error({ event: "empty_graph_name", firstMessage });
       return null;
     }
 
@@ -42,7 +44,7 @@ export async function generateGraphName(
     // Ensure it's not too long (max 120 chars per schema)
     return cleanedName.slice(0, 120);
   } catch (error) {
-    console.error("Failed to generate graph name:", error);
+    baseLogger.error({ event: "graph_name_generation_failed", error });
     return null;
   }
 }
@@ -86,7 +88,7 @@ export async function generateBranchName(
 
     const generatedName = response.choices[0]?.message?.content?.trim();
     if (!generatedName) {
-      console.error("LLM returned empty name for branch");
+      baseLogger.error({ event: "empty_branch_name" });
       return null;
     }
 
@@ -96,7 +98,7 @@ export async function generateBranchName(
     // Ensure it's not too long (max 120 chars per schema)
     return cleanedName.slice(0, 120);
   } catch (error) {
-    console.error("Failed to generate branch name:", error);
+    baseLogger.error({ event: "branch_name_generation_failed", error });
     return null;
   }
 }

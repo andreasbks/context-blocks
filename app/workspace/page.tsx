@@ -2,9 +2,9 @@ import { currentUser } from "@clerk/nextjs/server";
 
 import { ensureCurrentUserExists } from "@/lib/users/ensure-user";
 
-import DashboardClient from "./client";
+import WorkspaceClient from "./client";
 
-export default async function DashboardPage() {
+export default async function WorkspacePage() {
   const user = await currentUser();
   if (user) {
     await ensureCurrentUserExists();
@@ -12,7 +12,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex-1 w-full">
-      <DashboardClient />
+      <WorkspaceClient />
     </div>
   );
 }

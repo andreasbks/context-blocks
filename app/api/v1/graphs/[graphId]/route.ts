@@ -56,8 +56,12 @@ export async function GET(
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("GET /v1/graphs/{graphId} error", err);
-    return Errors.notFound("Graph");
+    const { log } = createRequestLogger(_, {
+      route: "GET /v1/graphs/:id",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
+    return jsonError("INTERNAL", "Internal server error");
   }
 }
 
@@ -137,7 +141,11 @@ export async function DELETE(
     log.info({ event: "request_end", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("DELETE /v1/graphs/{graphId} error", err);
+    const { log } = createRequestLogger(req, {
+      route: "DELETE /v1/graphs/:id",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
     return jsonError("INTERNAL", "Failed to delete graph");
   }
 }

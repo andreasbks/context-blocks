@@ -6,10 +6,10 @@ import { UseQueryResult } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, MessageSquare, Trash2 } from "lucide-react";
 import { z } from "zod";
 
-import { DeleteGraphDialog } from "@/components/dashboard/delete-graph-dialog";
-import { NewSessionDialog } from "@/components/dashboard/new-session-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DeleteGraphDialog } from "@/components/workspace/delete-graph-dialog";
+import { NewSessionDialog } from "@/components/workspace/new-session-dialog";
 import {
   GraphsListResponse,
   StartGraphResponse,

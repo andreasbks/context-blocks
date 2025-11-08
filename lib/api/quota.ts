@@ -1,7 +1,5 @@
+import { QUOTA_LIMIT, QUOTA_WINDOW_DAYS } from "@/lib/config";
 import { prisma } from "@/lib/db";
-
-const QUOTA_LIMIT = 100000;
-const QUOTA_WINDOW_DAYS = 30;
 
 export interface QuotaStatus {
   used: number;

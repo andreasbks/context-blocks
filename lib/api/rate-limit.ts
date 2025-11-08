@@ -1,9 +1,15 @@
 import { Errors } from "@/lib/api/errors";
+import {
+  RATE_LIMIT_READ_PER_MINUTE,
+  RATE_LIMIT_SSE_CONCURRENT,
+  RATE_LIMIT_WRITE_PER_MINUTE,
+} from "@/lib/config";
 
 type TimestampMs = number;
 
 type GlobalRateMaps = {
   writeBuckets: Map<string, TimestampMs[]>; // key = `${userId}:${route}`
+  readBuckets: Map<string, TimestampMs[]>; // key = `${userId}:${route}`
   sseCounts: Map<string, number>; // key = userId
 };
 
@@ -11,6 +17,7 @@ const globalMaps = globalThis as unknown as { __rateMaps?: GlobalRateMaps };
 if (!globalMaps.__rateMaps) {
   globalMaps.__rateMaps = {
     writeBuckets: new Map(),
+    readBuckets: new Map(),
     sseCounts: new Map(),
   };
 }
@@ -20,7 +27,7 @@ const maps = globalMaps.__rateMaps!;
 export function checkWriteRateLimit(
   userId: string,
   routeKey: string,
-  maxPerMinute = 60
+  maxPerMinute = RATE_LIMIT_WRITE_PER_MINUTE
 ): Response | null {
   const key = `${userId}:${routeKey}`;
   const now = Date.now();
@@ -42,10 +49,40 @@ export function checkWriteRateLimit(
   return null;
 }
 
+export function checkReadRateLimit(
+  userId: string,
+  routeKey: string,
+  maxPerMinute = RATE_LIMIT_READ_PER_MINUTE
+): Response | null {
+  // Defensive initialization for hot-reload scenarios
+  if (!maps.readBuckets) {
+    maps.readBuckets = new Map();
+  }
+
+  const key = `${userId}:${routeKey}`;
+  const now = Date.now();
+  const windowMs = 60_000;
+  const list = maps.readBuckets.get(key) ?? [];
+  // prune
+  const pruned = list.filter((t) => now - t < windowMs);
+  if (pruned.length >= maxPerMinute) {
+    const oldest = pruned[0];
+    const retryAfter = Math.max(
+      1,
+      Math.ceil((windowMs - (now - oldest)) / 1000)
+    );
+    maps.readBuckets.set(key, pruned);
+    return Errors.rateLimited(retryAfter);
+  }
+  pruned.push(now);
+  maps.readBuckets.set(key, pruned);
+  return null;
+}
+
 export function acquireSSESlot(
   userId: string,
   _routeKey: string,
-  maxConcurrent = 8
+  maxConcurrent = RATE_LIMIT_SSE_CONCURRENT
 ): { release: () => void; current: number } | Response {
   const current = maps.sseCounts.get(userId) ?? 0;
   if (current >= maxConcurrent) {

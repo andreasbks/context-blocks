@@ -1,6 +1,6 @@
+import { generateAndUpdateBranchName } from "@/lib/ai/background-branch-naming";
 import { buildSimpleContext } from "@/lib/ai/build-context";
-import { type Message, generateBranchName } from "@/lib/ai/naming";
-import { openai } from "@/lib/ai/openai";
+import { streamOpenAIResponse } from "@/lib/ai/stream-response";
 import { buildPromptWithSystem } from "@/lib/ai/system-prompt";
 import { requireOwner } from "@/lib/api/auth";
 import { Errors } from "@/lib/api/errors";
@@ -13,33 +13,31 @@ import { checkQuota, recordTokenUsage } from "@/lib/api/quota";
 import { acquireSSESlot, checkWriteRateLimit } from "@/lib/api/rate-limit";
 import { BranchIdParam } from "@/lib/api/schemas/queries";
 import { SendStreamBody } from "@/lib/api/schemas/requests";
-import { ErrorEnvelopeSchema } from "@/lib/api/schemas/shared";
 import {
   SSEDeltaSchema,
   SSEFinalSchema,
   SSEItemSchema,
-  SSEKeepaliveSchema,
 } from "@/lib/api/schemas/sse";
 import { createSSEContext } from "@/lib/api/sse-context";
+import {
+  sendConflictError,
+  sendInternalError,
+  sendQuotaExceededError,
+  sendValidationError,
+  startKeepalive,
+} from "@/lib/api/sse-utils";
 import { writeSSE } from "@/lib/api/validators";
 import { parseParams } from "@/lib/api/validators";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
-import { ensureUniqueBranchName } from "@/lib/utils/unique-name";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic"; // avoids any caching of the SSE route
-
-const openaiClient = openai;
+export const dynamic = "force-dynamic";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ branchId: string }> }
 ) {
-  const requestedModel = process.env["OPENAI_MODEL"] ?? "gpt-4";
-  let effectiveModel = requestedModel;
-  let effectiveTokenCount: null | number = null;
-
   const sse = createSSEContext();
   const headers = sse.headers;
 
@@ -82,25 +80,15 @@ export async function POST(
     // Check quota before processing request
     const quotaStatus = await checkQuota(owner.id);
     if (quotaStatus.remaining <= 0) {
-      return new Response(
-        JSON.stringify(
-          ErrorEnvelopeSchema.parse({
-            error: {
-              code: "QUOTA_EXCEEDED",
-              message: "Monthly token quota exceeded",
-              details: {
-                used: quotaStatus.used,
-                limit: quotaStatus.limit,
-                resetDate: quotaStatus.resetDate,
-              },
-            },
-          })
-        ),
-        {
-          status: 429,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      queueMicrotask(async () => {
+        await sendQuotaExceededError(sse, {
+          used: quotaStatus.used,
+          limit: quotaStatus.limit,
+          resetDate: quotaStatus.resetDate,
+        });
+        cleanupOnce();
+      });
+      return new Response(sse.readable, { status: 429, headers });
     }
 
     const cached = await getCachedIdempotentResponse(req, owner.id);
@@ -126,19 +114,7 @@ export async function POST(
     const parsed = SendStreamBody.safeParse(json);
     if (!parsed.success) {
       queueMicrotask(async () => {
-        await writeSSE(
-          ErrorEnvelopeSchema,
-          "error",
-          {
-            error: {
-              code: "VALIDATION_FAILED",
-              message: "Invalid request body",
-              details: parsed.error.flatten(),
-            },
-          },
-          sse
-        );
-        await sse.writer.close();
+        await sendValidationError(sse, parsed.error.flatten());
         cleanupOnce();
       });
       log.info({ event: "validation_result", ok: false });
@@ -147,9 +123,7 @@ export async function POST(
     log.info({ event: "validation_result", ok: true });
     const { userMessage, expectedVersion, forkFromNodeId } = parsed.data;
 
-    const keepalive = setInterval(() => {
-      void writeSSE(SSEKeepaliveSchema, "keepalive", {}, sse);
-    }, 15000);
+    const keepalive = startKeepalive(sse);
 
     // Start work in background so events can flush immediately
     void (async () => {
@@ -288,60 +262,17 @@ export async function POST(
         });
 
         // Stream assistant delta tokens
-        let accumulatedResponse = "";
-        let finalAssistantResponse = "";
+        const contextMessages = await buildSimpleContext(branchId);
+        const context = buildPromptWithSystem(contextMessages);
 
-        const context = await buildSimpleContext(branchId);
-        const input = buildPromptWithSystem(context);
-
-        const stream = await openaiClient.responses.create({
-          model: requestedModel,
-          input,
-          stream: true,
+        const { finalText, model, tokenCount } = await streamOpenAIResponse({
+          context,
+          onDelta: async (chunk) => {
+            await writeSSE(SSEDeltaSchema, "delta", { text: chunk }, sse);
+          },
+          log,
+          requestStartedAt: ctx.startedAt,
         });
-
-        let streamedDeltas = 0;
-
-        for await (const event of stream) {
-          switch (event.type) {
-            case "response.output_text.delta": {
-              const chunk = event.delta ?? "";
-              accumulatedResponse += chunk;
-              await writeSSE(SSEDeltaSchema, "delta", { text: chunk }, sse);
-              streamedDeltas += 1;
-              if (streamedDeltas == 1) {
-                log.info({
-                  event: "first_byte",
-                  durationMs: Date.now() - ctx.startedAt,
-                });
-              }
-              break;
-            }
-            case "response.output_text.done": {
-              finalAssistantResponse = event.text ?? accumulatedResponse;
-              break;
-            }
-            case "response.completed": {
-              if (event.response?.model) effectiveModel = event.response.model;
-              if (event.response?.usage?.output_tokens)
-                effectiveTokenCount = event.response.usage.output_tokens;
-              if (!finalAssistantResponse)
-                finalAssistantResponse = accumulatedResponse;
-              log.info({
-                event: "model_completed",
-                durationMs: Date.now() - ctx.startedAt,
-              });
-              break;
-            }
-            case "response.failed": {
-              throw new Error(
-                event.response.error?.message ?? "upstream_error"
-              );
-            }
-            default:
-              break;
-          }
-        }
 
         // Final assistant commit
         const tx2Start = Date.now();
@@ -361,10 +292,10 @@ export async function POST(
               userId: owner.id,
               kind: "assistant",
               content: {
-                text: finalAssistantResponse,
+                text: finalText,
               } as unknown as Prisma.InputJsonValue,
-              model: effectiveModel,
-              tokenCount: effectiveTokenCount,
+              model,
+              tokenCount,
               public: false,
             },
           });
@@ -439,24 +370,13 @@ export async function POST(
           Response
         ) {
           clearInterval(keepalive);
-          await writeSSE(
-            ErrorEnvelopeSchema,
-            "error",
-            {
-              error: {
-                code: "CONFLICT_TIP_MOVED",
-                message: "Branch tip has advanced",
-              },
-            },
-            sse
-          );
-          await sse.writer.close();
+          await sendConflictError(sse);
           return;
         }
 
         // Record token usage for quota tracking
-        if (effectiveTokenCount && effectiveTokenCount > 0) {
-          await recordTokenUsage(owner.id, effectiveTokenCount);
+        if (tokenCount && tokenCount > 0) {
+          await recordTokenUsage(owner.id, tokenCount);
         }
 
         // Unified final envelope: include both user and assistant items
@@ -492,124 +412,47 @@ export async function POST(
 
         // Asynchronously generate and update branch name if fork was created
         if (forkFromNodeId && "branch" in finalUnified) {
-          void (async () => {
-            try {
-              // Fetch last 5 messages from the timeline leading to fork point
-              const backtrackSql = `
-                with recursive backtrack(id, depth) as (
-                  select $1::text as id, 0 as depth
-                  union all
-                  select e."parentNodeId", backtrack.depth + 1
-                  from backtrack
-                  join "BlockEdge" e on e."childNodeId" = backtrack.id
-                  where e."graphId" = $2 
-                    and e."relation" = 'follows' 
-                    and e."deletedAt" is null
-                    and backtrack.depth < 5
-                )
-                select id as "nodeId" 
-                from backtrack
-                where id is not null
-                order by depth desc
-              `;
-
-              const contextResult = await prisma.$transaction(async (tx) => {
-                const branch = await tx.branch.findUnique({
-                  where: { id: branchId },
-                  include: { graph: true },
-                });
-                if (!branch) return { graphId: null, rows: [] };
-
-                const rows = await prisma.$queryRawUnsafe<
-                  Array<{ nodeId: string }>
-                >(backtrackSql, forkFromNodeId, branch.graphId);
-
-                return { graphId: branch.graphId, rows };
-              });
-
-              if (!contextResult.graphId) return;
-
-              const recentMessages: Message[] = [];
-              for (const { nodeId } of contextResult.rows) {
-                const node = await prisma.graphNode.findUnique({
-                  where: { id: nodeId },
-                  include: { block: true },
-                });
-                if (node && !node.hiddenAt) {
-                  const contentText =
-                    typeof node.block.content === "string"
-                      ? node.block.content
-                      : ((node.block.content as { text?: string })?.text ?? "");
-                  recentMessages.push({
-                    role: node.block.kind === "user" ? "user" : "assistant",
-                    content: contentText,
-                  });
-                }
-              }
-
-              // Add the user message as context for the fork
-              const userMessageText =
-                typeof userMessage === "string"
-                  ? userMessage
-                  : ((userMessage as { text?: string })?.text ?? "");
-
-              const generatedName = await generateBranchName(
-                recentMessages,
-                userMessageText
-              );
-              if (generatedName) {
-                const uniqueName = await ensureUniqueBranchName(
-                  contextResult.graphId,
-                  generatedName
-                );
-                await prisma.branch.update({
-                  where: { id: (finalUnified.branch as { id: string }).id },
-                  data: { name: uniqueName },
-                });
-                log.info({
-                  event: "branch_name_generated",
-                  branchId: (finalUnified.branch as { id: string }).id,
-                  name: uniqueName,
-                });
-              }
-            } catch (err) {
-              log.error({
-                event: "branch_name_generation_failed",
-                error: err,
-              });
-            }
-          })();
+          const newBranchId = (finalUnified.branch as { id: string }).id;
+          const baseBranch = await prisma.branch.findUnique({
+            where: { id: branchId },
+            include: { graph: true },
+          });
+          if (baseBranch) {
+            const userMessageText =
+              typeof userMessage === "string"
+                ? userMessage
+                : ((userMessage as { text?: string })?.text ?? "");
+            void generateAndUpdateBranchName(
+              newBranchId,
+              forkFromNodeId,
+              baseBranch.graphId,
+              userMessageText,
+              log
+            );
+          }
         }
       } catch (err) {
-        console.error(
-          "POST /v1/branches/{branchId}/send/stream background error",
-          err
-        );
+        log.error({
+          event: "background_error",
+          error: err,
+        });
 
-        // Handle specific error types
+        // Handle specific error types without exposing internal details
         let errorCode = "INTERNAL";
         let errorMessage = "Internal server error";
 
         // Check for Prisma unique constraint violation (P2002)
+        // Note: Don't expose constraint details to client
         if (err && typeof err === "object" && "code" in err) {
-          const prismaErr = err as {
-            code: string;
-            meta?: { target?: string[] };
-          };
+          const prismaErr = err as { code: string };
           if (prismaErr.code === "P2002") {
-            errorCode = "DUPLICATE_BRANCH_NAME";
-            const target = prismaErr.meta?.target?.join(", ") || "name";
-            errorMessage = `A branch with this name already exists. Please try a different name. (Constraint: ${target})`;
+            errorCode = "CONFLICT";
+            errorMessage =
+              "A resource with this name already exists. Please try a different name.";
           }
         }
 
-        await writeSSE(
-          ErrorEnvelopeSchema,
-          "error",
-          { error: { code: errorCode, message: errorMessage } },
-          sse
-        );
-        await sse.writer.close();
+        await sendInternalError(sse, errorCode, errorMessage);
       } finally {
         void sse.writer.closed.then(() => {
           clearInterval(keepalive);
@@ -627,15 +470,13 @@ export async function POST(
     log.info({ event: "sse_open", durationMs: Date.now() - ctx.startedAt });
     return res;
   } catch (err) {
-    console.error("POST /v1/branches/{branchId}/send/stream error", err);
+    const { log } = createRequestLogger(req, {
+      route: "POST /v1/branches/:id/send/stream",
+      userId: "unknown",
+    });
+    log.error({ event: "request_error", error: err });
     queueMicrotask(async () => {
-      await writeSSE(
-        ErrorEnvelopeSchema,
-        "error",
-        { error: { code: "INTERNAL", message: "Internal server error" } },
-        sse
-      );
-      await sse.writer.close();
+      await sendInternalError(sse);
     });
     return new Response(sse.readable, { status: 500, headers });
   }

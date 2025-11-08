@@ -5,9 +5,9 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
-import { BranchTreeSidebar } from "@/components/dashboard/branch-tree-sidebar";
-import { ChatArea } from "@/components/dashboard/chat-area";
-import { Sidebar } from "@/components/dashboard/sidebar";
+import { BranchTreeSidebar } from "@/components/workspace/branch-tree-sidebar";
+import { ChatArea } from "@/components/workspace/chat-area";
+import { Sidebar } from "@/components/workspace/sidebar";
 import {
   GraphDetailResponse,
   GraphsListResponse,
@@ -39,7 +39,7 @@ interface ForkContext {
   messageText: string;
 }
 
-export default function DashboardClient() {
+export default function WorkspaceClient() {
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -181,17 +181,45 @@ export default function DashboardClient() {
     generateStream,
   ]);
 
-  // Auto-scroll when data changes
+  const isStreaming = chat.isStreaming || isCreationStreaming;
+  const streamingContent =
+    chat.streamingAssistant || creationStreamingAssistant;
+
+  // Auto-scroll during generation based on current position
   useEffect(() => {
+    if (!isStreaming) return;
+
     const scrollElement = chat.scrollRef.current;
-    if (scrollElement) {
+    if (!scrollElement) return;
+
+    // Check current position - if user is near bottom, scroll
+    const distanceFromBottom =
+      scrollElement.scrollHeight -
+      scrollElement.scrollTop -
+      scrollElement.clientHeight;
+
+    // If user is near bottom (within 150px), keep scrolling
+    // If they're not, don't scroll (they can scroll back down to re-enable)
+    if (distanceFromBottom < 150) {
       // eslint-disable-next-line react-hooks/immutability
       scrollElement.scrollTop = scrollElement.scrollHeight;
     }
+  }, [isStreaming, streamingContent, linearQuery.data, chat.scrollRef]);
+
+  // Auto-scroll to bottom when switching branches
+  useEffect(() => {
+    // After branch switch and data is loaded, scroll to bottom
+    if (selectedBranchId && !linearQuery.isLoading && linearQuery.data) {
+      const scrollElement = chat.scrollRef.current;
+      if (scrollElement) {
+        // eslint-disable-next-line react-hooks/immutability
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
+    }
   }, [
+    selectedBranchId,
+    linearQuery.isLoading,
     linearQuery.data,
-    chat.streamingAssistant,
-    creationStreamingAssistant,
     chat.scrollRef,
   ]);
 

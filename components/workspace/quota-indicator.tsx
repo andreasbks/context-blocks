@@ -38,25 +38,25 @@ export function QuotaIndicator() {
     year: "numeric",
   });
 
-  // Determine color based on usage
-  let colorClass = "bg-green-500";
-  let textColorClass = "text-green-600";
+  // Determine color based on usage - white/red scheme
+  let barColorClass = "bg-foreground";
+  let textColorClass = "text-foreground";
   if (percentage >= 90) {
-    colorClass = "bg-red-500";
-    textColorClass = "text-red-600";
+    barColorClass = "bg-red-500 dark:bg-red-400";
+    textColorClass = "text-red-500 dark:text-red-400";
   } else if (percentage >= 70) {
-    colorClass = "bg-yellow-500";
-    textColorClass = "text-yellow-600";
+    barColorClass = "bg-orange-500 dark:bg-orange-400";
+    textColorClass = "text-orange-500 dark:text-orange-400";
   }
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex items-center gap-2 cursor-pointer">
-            <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+          <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-accent/50 hover:bg-accent hover:shadow-sm hover:border-primary/30 border border-transparent hover:scale-[1.02] transition-all duration-200 cursor-pointer">
+            <div className="w-24 h-2 bg-muted/50 dark:bg-muted/30 rounded-full overflow-hidden">
               <div
-                className={`h-full ${colorClass} transition-all duration-300`}
+                className={`h-full ${barColorClass} transition-all duration-300`}
                 style={{ width: `${Math.min(percentage, 100)}%` }}
               />
             </div>

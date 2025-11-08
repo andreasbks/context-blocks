@@ -32,8 +32,11 @@ export function QueryProvider({ children }: QueryProviderProps) {
             retry: 1,
             // Show error notifications for failed mutations
             onError: (error) => {
-              console.error("Mutation error:", error);
-              // TODO: Add toast notification here
+              if (process.env.NODE_ENV === "development") {
+                console.error("Mutation error:", error);
+              }
+              // Error boundary will catch unhandled errors
+              // Individual mutations should handle their own toast notifications
             },
           },
         },
