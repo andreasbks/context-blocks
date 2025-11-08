@@ -183,10 +183,28 @@ export function ChatArea({
                     alternateBranches = siblings;
                   } else {
                     // No siblings - this is a child branch, show parent to switch back
-                    const parentBranch = graphDetailQuery.data?.branches[0];
-                    if (parentBranch && parentBranch.id !== selectedBranchId) {
+                    // Find the actual parent branch by matching rootNodeId to parent's tipNodeId
+                    // (we forked from the parent's tip, so parent.tipNodeId == current.rootNodeId)
+                    const parentBranch = graphDetailQuery.data?.branches.find(
+                      (b) =>
+                        b.id !== selectedBranchId &&
+                        currentBranch.rootNodeId &&
+                        b.tipNodeId === currentBranch.rootNodeId
+                    );
+
+                    // If no exact match, fall back to the main branch or oldest branch
+                    const fallbackParent = !parentBranch
+                      ? graphDetailQuery.data?.branches.find(
+                          (b) =>
+                            b.id !== selectedBranchId &&
+                            (b.name.toLowerCase() === "main" || !b.rootNodeId)
+                        )
+                      : undefined;
+
+                    const branchToShow = parentBranch || fallbackParent;
+                    if (branchToShow) {
                       shouldShowPills = true;
-                      alternateBranches = [parentBranch];
+                      alternateBranches = [branchToShow];
                     }
                   }
                 } else if (branchesFromNode.length > 0) {

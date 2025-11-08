@@ -1,3 +1,5 @@
+export type SSEContext = ReturnType<typeof createSSEContext>;
+
 export function createSSEContext(keepalive_interval: number = 15000) {
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
