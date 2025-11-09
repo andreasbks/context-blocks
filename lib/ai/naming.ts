@@ -21,7 +21,7 @@ export async function generateGraphName(
         {
           role: "system",
           content:
-            "You are a helpful assistant that generates concise, descriptive titles for conversations. Generate a 3-7 word title that captures the essence of the conversation topic. Do not use quotes or special formatting. Just return the plain title.",
+            "You are a helpful assistant that generates concise, descriptive titles for conversations. Generate a 3-4 word title that captures the essence of the conversation topic. Do not use quotes or special formatting. Just return the plain title.",
         },
         {
           role: "user",
@@ -75,7 +75,7 @@ export async function generateBranchName(
         {
           role: "system",
           content:
-            "You are a helpful assistant that generates concise, descriptive branch names for conversation threads. Generate a 3-7 word name that captures what makes this branch exploration unique or different. Do not use quotes or special formatting. Just return the plain branch name.",
+            "You are a helpful assistant that generates concise, descriptive branch names for conversation threads. Generate a 3-4 word name that captures what makes this branch exploration unique or different. Do not use quotes or special formatting. Just return the plain branch name. You need to imagine that the user needs to be able to find the branch quickly, therefore grasp the essence of the reason this branch exists in the bigger picture to find it quickly.",
         },
         {
           role: "user",

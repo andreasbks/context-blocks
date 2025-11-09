@@ -43,14 +43,14 @@ const blockTypeConfig = {
 
 interface MessageItemProps {
   item: TimelineItem;
-  onStartFork?: (nodeId: string, messageText: string) => void;
+  onStartBranch?: (nodeId: string, messageText: string) => void;
   showBranchButton?: boolean;
   branchPointContent?: React.ReactNode;
 }
 
 export function MessageItem({
   item,
-  onStartFork,
+  onStartBranch,
   showBranchButton = false,
   branchPointContent,
 }: MessageItemProps) {
@@ -87,19 +87,19 @@ export function MessageItem({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Start Branch Button - Appears on hover */}
-          {showBranchButton && onStartFork && (
+          {/* Start Branch Button - Appears on hover with amber accent */}
+          {showBranchButton && onStartBranch && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 const messageText = getBlockText(item.block);
-                onStartFork(item.nodeId, messageText);
+                onStartBranch(item.nodeId, messageText);
               }}
-              className="opacity-0 group-hover/message:opacity-100 transition-all duration-300 ease-out h-7 px-2 text-xs hover:bg-primary/10 hover:text-primary hover:scale-105 active:scale-95 hover:shadow-sm"
+              className="opacity-60 group-hover/message:opacity-100 transition-all duration-300 ease-out h-7 px-2 text-xs border border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-400 hover:border-amber-500/50 hover:scale-110 active:scale-95 hover:shadow-md"
             >
-              <GitBranch className="mr-1.5 h-3.5 w-3.5 transition-transform group-hover:rotate-12" />
-              <span className="font-medium">Fork from here</span>
+              <GitBranch className="mr-1.5 h-3.5 w-3.5 transition-transform group-hover/message:rotate-12" />
+              <span className="font-medium">Branch from here</span>
             </Button>
           )}
           <div className="text-xs text-muted-foreground">
