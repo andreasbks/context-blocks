@@ -96,10 +96,10 @@ export function MessageItem({
                 const messageText = getBlockText(item.block);
                 onStartFork(item.nodeId, messageText);
               }}
-              className="opacity-0 group-hover/message:opacity-100 transition-opacity h-7 px-2 text-xs"
+              className="opacity-0 group-hover/message:opacity-100 transition-all duration-300 ease-out h-7 px-2 text-xs hover:bg-primary/10 hover:text-primary hover:scale-105 active:scale-95 hover:shadow-sm"
             >
-              <GitBranch className="mr-1.5 h-3.5 w-3.5" />
-              Fork from here
+              <GitBranch className="mr-1.5 h-3.5 w-3.5 transition-transform group-hover:rotate-12" />
+              <span className="font-medium">Fork from here</span>
             </Button>
           )}
           <div className="text-xs text-muted-foreground">
@@ -121,10 +121,11 @@ export function MessageItem({
           <span className="text-xs font-medium text-muted-foreground">
             📎 References:
           </span>
-          {item.references.map((ref) => (
+          {item.references.map((ref, idx) => (
             <span
               key={ref.nodeId}
-              className="inline-flex items-center rounded-full bg-accent/50 border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary transition-all duration-200 cursor-help"
+              className="inline-flex items-center rounded-full bg-accent/50 border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary hover:scale-105 transition-all duration-200 cursor-help animate-in fade-in zoom-in-95"
+              style={{ animationDelay: `${idx * 50}ms` }}
               title={getBlockText(ref.block)}
             >
               {ref.block.kind === "user" ? "📄" : "🤖"} ref

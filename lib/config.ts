@@ -10,6 +10,46 @@
 export const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4";
 
 // ============================================================================
+// Langfuse Configuration (Prompt Management)
+// ============================================================================
+
+/**
+ * Langfuse public key (required for prompt management)
+ */
+export const LANGFUSE_PUBLIC_KEY = process.env.LANGFUSE_PUBLIC_KEY ?? "";
+
+/**
+ * Langfuse secret key (required for prompt management)
+ */
+export const LANGFUSE_SECRET_KEY = process.env.LANGFUSE_SECRET_KEY ?? "";
+
+/**
+ * Langfuse base URL (cloud.langfuse.com for EU or us.cloud.langfuse.com for US)
+ */
+export const LANGFUSE_BASE_URL =
+  process.env.LANGFUSE_BASE_URL ?? "https://cloud.langfuse.com";
+
+/**
+ * Langfuse prompt label to fetch (defaults to environment-based label)
+ * Supports: "production", "staging", "development", or "latest"
+ */
+export const LANGFUSE_PROMPT_LABEL =
+  process.env.LANGFUSE_PROMPT_LABEL ?? "production";
+
+/**
+ * System prompt name in Langfuse
+ */
+export const LANGFUSE_SYSTEM_PROMPT_NAME =
+  process.env.LANGFUSE_SYSTEM_PROMPT_NAME ?? "context-blocks-system";
+
+/**
+ * Enable/disable Langfuse prompt management
+ */
+export const LANGFUSE_ENABLED =
+  process.env.LANGFUSE_ENABLED !== "false" &&
+  Boolean(LANGFUSE_PUBLIC_KEY && LANGFUSE_SECRET_KEY);
+
+// ============================================================================
 // Quota Configuration
 // ============================================================================
 
@@ -84,5 +124,9 @@ if (process.env.NODE_ENV !== "production") {
     CONTEXT_MAX_NODES,
     SSE_KEEPALIVE_INTERVAL_MS,
     LOG_LEVEL,
+    LANGFUSE_ENABLED,
+    LANGFUSE_BASE_URL,
+    LANGFUSE_PROMPT_LABEL,
+    LANGFUSE_SYSTEM_PROMPT_NAME,
   });
 }

@@ -263,7 +263,7 @@ export async function POST(
 
         // Stream assistant delta tokens
         const contextMessages = await buildSimpleContext(branchId);
-        const context = buildPromptWithSystem(contextMessages);
+        const context = await buildPromptWithSystem(contextMessages);
 
         const { finalText, model, tokenCount } = await streamOpenAIResponse({
           context,

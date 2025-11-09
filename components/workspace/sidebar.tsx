@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { UseQueryResult } from "@tanstack/react-query";
+import { UseQueryResult, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, MessageSquare, Trash2 } from "lucide-react";
 import { z } from "zod";
 
@@ -10,13 +10,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DeleteGraphDialog } from "@/components/workspace/delete-graph-dialog";
 import { NewSessionDialog } from "@/components/workspace/new-session-dialog";
+import { GraphListSkeleton } from "@/components/workspace/skeleton-loaders";
 import {
+  GraphDetailResponse,
   GraphsListResponse,
   StartGraphResponse,
 } from "@/lib/api/schemas/responses";
+import { QUERY_KEYS } from "@/lib/constants/query-keys";
 import { useGraphMutations } from "@/lib/hooks/use-graph-mutations";
 
 type GraphListItem = z.infer<typeof GraphsListResponse>["items"][number];
+type GraphDetail = z.infer<typeof GraphDetailResponse>;
+
+async function fetchJson<T>(
+  input: RequestInfo,
+  init?: RequestInit
+): Promise<T> {
+  const res = await fetch(input, init);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as T;
+}
 
 interface SidebarProps {
   isOpen: boolean;
@@ -30,6 +43,8 @@ interface SidebarProps {
   onSelectGraph: (graphId: string) => void;
   onGraphCreated?: (data: z.infer<typeof StartGraphResponse>) => void;
   onGraphDeleted?: (graphId: string) => void;
+  autoShowNewSession?: boolean;
+  onNewSessionShown?: () => void;
 }
 
 const SearchIcon = () => <span className="text-sm">🔍</span>;
@@ -44,6 +59,8 @@ export function Sidebar({
   onSelectGraph,
   onGraphCreated,
   onGraphDeleted,
+  autoShowNewSession = false,
+  onNewSessionShown,
 }: SidebarProps) {
   const [search, setSearch] = useState("");
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
@@ -53,7 +70,10 @@ export function Sidebar({
     title: string | null;
   } | null>(null);
   const [hoveredGraphId, setHoveredGraphId] = useState<string | null>(null);
+  const [deletingGraphId, setDeletingGraphId] = useState<string | null>(null);
+  const [shouldAnimate, setShouldAnimate] = useState(true);
 
+  const queryClient = useQueryClient();
   const { createGraph, deleteGraph, isCreating, isDeleting } =
     useGraphMutations();
 
@@ -65,6 +85,40 @@ export function Sidebar({
       (g.title ?? "untitled").toLowerCase().includes(q)
     );
   }, [graphsQuery.data, search]);
+
+  // Track initial load to avoid re-animating on updates
+  useEffect(() => {
+    if (!graphsQuery.isLoading && graphsQuery.data && shouldAnimate) {
+      // Disable animation after first render
+      const timer = setTimeout(() => setShouldAnimate(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [graphsQuery.isLoading, graphsQuery.data, shouldAnimate]);
+
+  // Auto-open new session dialog for first-time users
+  useEffect(() => {
+    if (autoShowNewSession && !newSessionDialogOpen) {
+      // Use setTimeout to avoid synchronous setState in effect
+      const timer = setTimeout(() => {
+        setNewSessionDialogOpen(true);
+        if (onNewSessionShown) {
+          onNewSessionShown();
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [autoShowNewSession, newSessionDialogOpen, onNewSessionShown]);
+
+  // Prefetch graph details on hover for faster perceived loading
+  const handleGraphHover = (graphId: string) => {
+    setHoveredGraphId(graphId);
+    // Prefetch the graph detail query
+    void queryClient.prefetchQuery({
+      queryKey: QUERY_KEYS.graphDetail(graphId),
+      queryFn: async () => fetchJson<GraphDetail>(`/api/v1/graphs/${graphId}`),
+      staleTime: 10_000,
+    });
+  };
 
   const handleCreateGraph = (firstMessage: string) => {
     createGraph({
@@ -90,15 +144,22 @@ export function Sidebar({
 
   const handleDeleteConfirm = () => {
     if (graphToDelete) {
-      deleteGraph({
-        graphId: graphToDelete.id,
-        onSuccess: () => {
-          if (onGraphDeleted) {
-            onGraphDeleted(graphToDelete.id);
-          }
-        },
-      });
-      setGraphToDelete(null);
+      // Set deleting state for animation
+      setDeletingGraphId(graphToDelete.id);
+
+      // Wait for animation to complete before actually deleting
+      setTimeout(() => {
+        deleteGraph({
+          graphId: graphToDelete.id,
+          onSuccess: () => {
+            if (onGraphDeleted) {
+              onGraphDeleted(graphToDelete.id);
+            }
+            setDeletingGraphId(null);
+          },
+        });
+        setGraphToDelete(null);
+      }, 200); // Animation duration
     }
   };
 
@@ -185,19 +246,31 @@ export function Sidebar({
           {/* Sessions List */}
           <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
             {graphsQuery.isLoading ? (
-              <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
-                Loading sessions...
-              </div>
+              <GraphListSkeleton />
             ) : filteredGraphs.length === 0 ? (
               <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
                 No sessions found
               </div>
             ) : (
-              filteredGraphs.map((g) => (
+              filteredGraphs.map((g, index) => (
                 <div
                   key={g.id}
-                  className="relative"
-                  onMouseEnter={() => setHoveredGraphId(g.id)}
+                  className={`relative transition-all duration-200 ${
+                    deletingGraphId === g.id
+                      ? "animate-out fade-out slide-out-to-left-3"
+                      : shouldAnimate
+                        ? "animate-in fade-in slide-in-from-left-3"
+                        : ""
+                  }`}
+                  style={{
+                    animationDelay:
+                      deletingGraphId === g.id
+                        ? "0ms"
+                        : shouldAnimate
+                          ? `${index * 30}ms`
+                          : "0ms",
+                  }}
+                  onMouseEnter={() => handleGraphHover(g.id)}
                   onMouseLeave={() => setHoveredGraphId(null)}
                 >
                   <button
@@ -227,7 +300,9 @@ export function Sidebar({
                       className={`
                         absolute right-2 top-1/2 -translate-y-1/2
                         p-2 rounded-md
-                        transition-colors duration-200
+                        transition-all
+                        hover:scale-110 active:scale-95
+                        animate-in fade-in slide-in-from-right-2 duration-150
                         ${
                           selectedGraphId === g.id
                             ? "hover:bg-primary-foreground/20 text-primary-foreground"

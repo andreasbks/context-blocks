@@ -36,10 +36,21 @@ export function BranchTreeSidebar({
   onWidthChange,
 }: BranchTreeSidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
+  const [shouldAnimate, setShouldAnimate] = useState(true);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   // Build the tree structure
   const tree = buildBranchTree(branches, activeBranchId);
+
+  // Track initial load to avoid re-animating on updates
+  useEffect(() => {
+    if (branches.length > 0 && shouldAnimate) {
+      const timer = setTimeout(() => {
+        setShouldAnimate(false);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [branches.length, shouldAnimate]);
 
   // Empty state
   const isEmpty = branches.length === 0;
@@ -139,12 +150,25 @@ export function BranchTreeSidebar({
               </div>
 
               {tree.map((node, idx) => (
-                <BranchTreeNode
+                <div
                   key={node.branch.id}
-                  node={node}
-                  onSelect={onSelectBranch}
-                  isLast={idx === tree.length - 1}
-                />
+                  className={
+                    shouldAnimate
+                      ? "animate-in fade-in slide-in-from-right-2 duration-300"
+                      : ""
+                  }
+                  style={
+                    shouldAnimate
+                      ? { animationDelay: `${idx * 50}ms` }
+                      : undefined
+                  }
+                >
+                  <BranchTreeNode
+                    node={node}
+                    onSelect={onSelectBranch}
+                    isLast={idx === tree.length - 1}
+                  />
+                </div>
               ))}
             </div>
           )}

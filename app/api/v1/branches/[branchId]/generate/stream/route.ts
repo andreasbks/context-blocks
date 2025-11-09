@@ -147,7 +147,7 @@ export async function POST(
       try {
         // Generate assistant message while streaming deltas to the client
         const contextMessages = await buildSimpleContext(branchId);
-        const context = buildPromptWithSystem(contextMessages);
+        const context = await buildPromptWithSystem(contextMessages);
 
         const { finalText, model, tokenCount } = await streamOpenAIResponse({
           context,
