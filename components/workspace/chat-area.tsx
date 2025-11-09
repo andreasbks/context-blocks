@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { UseQueryResult } from "@tanstack/react-query";
 import { GitBranch } from "lucide-react";
 import { z } from "zod";
@@ -15,6 +17,10 @@ import {
 
 import { BranchPoint } from "./branch-point";
 import { MessageItem } from "./message-item";
+import {
+  SessionLoadingSkeleton,
+  TimelineMessageSkeleton,
+} from "./skeleton-loaders";
 
 type TimelineItem = z.infer<typeof LinearResponse>["items"][number];
 type GraphDetail = z.infer<typeof GraphDetailResponse>;
@@ -67,29 +73,89 @@ export function ChatArea({
   setForkComposer,
   onSubmitFork,
 }: ChatAreaProps) {
+  const [shouldAnimate, setShouldAnimate] = useState(true);
+
+  // Track branch changes to control animations
+  useEffect(() => {
+    // Reset animation on branch change (async to avoid linter warning)
+    const timer1 = setTimeout(() => setShouldAnimate(true), 0);
+
+    // Disable animation after initial render
+    const timer2 = setTimeout(() => setShouldAnimate(false), 500);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [selectedBranchId]);
+
   if (selectedGraphId == null) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-5xl mb-4">💭</div>
-          <h3 className="text-2xl font-bold tracking-tight">
-            Welcome to Context Blocks
-          </h3>
-          <p className="text-muted-foreground max-w-md">
-            Select a session from the sidebar or create a new one to start
-            branching conversations
+      <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background via-background to-accent/5">
+        <div className="text-center space-y-6 max-w-2xl px-8 animate-in fade-in duration-700">
+          {/* Animated Icon */}
+          <div className="relative mx-auto w-24 h-24 mb-2">
+            <div className="absolute inset-0 bg-primary/10 rounded-full animate-pulse" />
+            <div
+              className="absolute inset-2 bg-primary/20 rounded-full animate-ping"
+              style={{ animationDuration: "2s" }}
+            />
+            <div className="relative flex items-center justify-center h-full">
+              <span className="text-6xl">💭</span>
+            </div>
+          </div>
+
+          {/* Main Heading */}
+          <div className="space-y-2">
+            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+              Welcome to Context Blocks
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              Think in branches, not lines
+            </p>
+          </div>
+
+          {/* Description */}
+          <p className="text-base text-muted-foreground max-w-md mx-auto leading-relaxed">
+            Start a new conversation session, explore different paths with
+            branches, and never lose context again.
           </p>
+
+          {/* Visual Guide */}
+          <div className="flex items-center justify-center gap-8 pt-4 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <div className="w-8 h-8 rounded-lg bg-accent/50 flex items-center justify-center">
+                <span>←</span>
+              </div>
+              <span>Browse sessions</span>
+            </div>
+            <div className="text-muted-foreground/30">or</div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center font-bold text-primary">
+                +
+              </div>
+              <span>Create new session</span>
+            </div>
+          </div>
+
+          {/* Keyboard Shortcut Hint */}
+          <div className="pt-4 text-xs text-muted-foreground/60">
+            <span className="inline-flex items-center gap-1">
+              Press{" "}
+              <kbd className="px-2 py-1 bg-accent/50 rounded border border-border/50 font-mono">
+                ⌘B
+              </kbd>{" "}
+              to toggle sidebar
+            </span>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (graphDetailQuery.isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-muted-foreground">Loading session...</div>
-      </div>
-    );
+  // Show skeleton when loading OR when data doesn't match selected graph (prevents wrong data flash)
+  if (graphDetailQuery.isLoading || !graphDetailQuery.data) {
+    return <SessionLoadingSkeleton />;
   }
 
   const currentBranchName = graphDetailQuery.data?.branches.find(
@@ -125,16 +191,18 @@ export function ChatArea({
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-4 md:px-8 py-4">
           <div className="space-y-4">
-            {linearQuery.isLoading ? (
-              <div className="flex items-center justify-center h-40 text-muted-foreground">
-                Loading messages...
-              </div>
+            {linearQuery.isLoading || !linearQuery.data ? (
+              <>
+                <TimelineMessageSkeleton />
+                <TimelineMessageSkeleton />
+                <TimelineMessageSkeleton />
+              </>
             ) : (linearQuery.data?.items ?? []).length === 0 ? (
               <div className="flex items-center justify-center h-40 text-muted-foreground">
                 No messages yet. Start the conversation below.
               </div>
             ) : (
-              linearQuery.data!.items.map((item) => {
+              linearQuery.data!.items.map((item, index) => {
                 // Find the current branch object
                 const currentBranch = graphDetailQuery.data?.branches.find(
                   (b) => b.id === selectedBranchId
@@ -217,7 +285,19 @@ export function ChatArea({
                 }
 
                 return (
-                  <div key={item.nodeId}>
+                  <div
+                    key={item.nodeId}
+                    className={
+                      shouldAnimate
+                        ? "animate-in fade-in slide-in-from-bottom-3 duration-300"
+                        : ""
+                    }
+                    style={
+                      shouldAnimate
+                        ? { animationDelay: `${index * 40}ms` }
+                        : undefined
+                    }
+                  >
                     <MessageItem
                       item={item}
                       showBranchButton={!forkContext}
@@ -235,72 +315,88 @@ export function ChatArea({
 
                     {/* Inline Fork Composer - Show if this is the fork context node */}
                     {forkContext && forkContext.nodeId === item.nodeId && (
-                      <div className="my-4 ml-6 animate-in slide-in-from-top-2 duration-300">
+                      <div className="my-4 ml-6 animate-in fade-in slide-in-from-top-4 duration-500 ease-out">
                         <form onSubmit={onSubmitFork}>
-                          <div className="rounded-xl border-2 border-dashed border-primary/30 bg-card hover:border-primary/40 transition-colors">
-                            <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border/50">
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs font-medium bg-primary/10 text-primary border-primary/30"
-                                >
-                                  <GitBranch className="mr-1 h-3 w-3" />
-                                  Fork from here
-                                </Badge>
-                                {forkComposer.length > 0 && (
-                                  <span className="text-xs text-muted-foreground">
-                                    {forkComposer.length} characters
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  type="submit"
-                                  size="sm"
-                                  disabled={!forkComposer.trim() || isStreaming}
-                                  className="min-w-[100px]"
-                                >
-                                  {isStreaming ? (
-                                    <span className="animate-pulse">
-                                      Creating...
+                          <div className="relative rounded-xl border-2 border-dashed border-primary/30 bg-card hover:border-primary/50 transition-all duration-300 hover:shadow-lg">
+                            {/* Subtle glow effect */}
+                            <div
+                              className="absolute -inset-0.5 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-xl blur opacity-30 animate-pulse"
+                              style={{ animationDuration: "3s" }}
+                            />
+                            <div className="relative rounded-xl bg-card">
+                              <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border/50">
+                                <div className="flex items-center gap-2">
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs font-medium bg-primary/10 text-primary border-primary/30 animate-in fade-in zoom-in-95 duration-300"
+                                  >
+                                    <GitBranch className="mr-1 h-3 w-3 animate-in spin-in-90 duration-500" />
+                                    Creating new branch
+                                  </Badge>
+                                  {forkComposer.length > 0 && (
+                                    <span className="text-xs text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-200">
+                                      {forkComposer.length} characters
                                     </span>
-                                  ) : (
-                                    <>
-                                      Create
-                                      <span className="ml-1.5">→</span>
-                                    </>
                                   )}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={onCancelFork}
-                                  disabled={isStreaming}
-                                  className="h-8 px-2"
-                                >
-                                  ✕
-                                </Button>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    type="submit"
+                                    size="sm"
+                                    disabled={
+                                      !forkComposer.trim() || isStreaming
+                                    }
+                                    className="min-w-[100px] transition-all duration-200"
+                                  >
+                                    {isStreaming ? (
+                                      <div className="flex items-center gap-2">
+                                        <div className="relative w-4 h-4">
+                                          <div className="absolute inset-0 border-2 border-primary-foreground/30 rounded-full" />
+                                          <div className="absolute inset-0 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                                        </div>
+                                        <span className="animate-pulse">
+                                          Creating branch...
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <GitBranch className="mr-1.5 h-3.5 w-3.5" />
+                                        Create Branch
+                                        <span className="ml-1.5">→</span>
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={onCancelFork}
+                                    disabled={isStreaming}
+                                    className="h-8 px-2 hover:bg-destructive/10 hover:text-destructive transition-all duration-200 hover:scale-110 active:scale-95"
+                                  >
+                                    ✕
+                                  </Button>
+                                </div>
                               </div>
-                            </div>
-                            <div className="px-4 py-3">
-                              <Textarea
-                                placeholder="Type your message to start the new branch... (Press Enter to send, Shift+Enter for new line)"
-                                value={forkComposer}
-                                onChange={(e) =>
-                                  setForkComposer(e.target.value)
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    e.currentTarget.form?.requestSubmit();
+                              <div className="px-4 py-3 animate-in fade-in duration-300 delay-100">
+                                <Textarea
+                                  placeholder="Type your message to start the new branch... (Press Enter to send, Shift+Enter for new line)"
+                                  value={forkComposer}
+                                  onChange={(e) =>
+                                    setForkComposer(e.target.value)
                                   }
-                                }}
-                                rows={3}
-                                disabled={isStreaming}
-                                className="resize-none border-0 p-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent placeholder:text-muted-foreground/50"
-                                autoFocus
-                              />
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                      e.preventDefault();
+                                      e.currentTarget.form?.requestSubmit();
+                                    }
+                                  }}
+                                  rows={3}
+                                  disabled={isStreaming}
+                                  className="resize-none border-0 p-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent placeholder:text-muted-foreground/50 transition-all duration-200"
+                                  autoFocus
+                                />
+                              </div>
                             </div>
                           </div>
                         </form>
@@ -313,7 +409,7 @@ export function ChatArea({
 
             {/* Streaming assistant response */}
             {streamingAssistant && (
-              <div className="rounded-xl border-2 border-purple-500/30 bg-card shadow-md">
+              <div className="rounded-xl border-2 border-purple-500/30 bg-card shadow-md animate-in fade-in slide-in-from-bottom-3 duration-300">
                 {/* Block Header - Streaming State */}
                 <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-border/50">
                   <div className="flex items-center gap-2">
@@ -342,7 +438,7 @@ export function ChatArea({
 
             {/* Composer - Context Block Style (Inline after messages) */}
             <form onSubmit={onSubmit}>
-              <div className="rounded-xl border-2 border-dashed border-muted-foreground/20 bg-card hover:border-muted-foreground/30 transition-colors">
+              <div className="rounded-xl border-2 border-dashed border-muted-foreground/20 bg-card hover:border-muted-foreground/30 transition-all duration-200 hover:shadow-sm">
                 {/* Block Header - Draft State */}
                 <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border/50">
                   <div className="flex items-center gap-2">

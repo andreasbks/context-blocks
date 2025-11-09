@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { z } from "zod";
 
 import { BranchTreeSidebar } from "@/components/workspace/branch-tree-sidebar";
@@ -56,6 +57,7 @@ export default function WorkspaceClient() {
   const [forkContext, setForkContext] = useState<ForkContext | null>(null);
   const [forkComposer, setForkComposer] = useState("");
   const [manuallySelectedBranch, setManuallySelectedBranch] = useState(false);
+  const [autoShowNewSession, setAutoShowNewSession] = useState(false);
 
   const qc = useQueryClient();
 
@@ -129,10 +131,38 @@ export default function WorkspaceClient() {
     setCreationStreamingAssistant("");
   };
 
+  // Auto-show new session dialog for first-time users
+  useEffect(() => {
+    const hasSeenEmptyState = localStorage.getItem("hasSeenEmptyState");
+    const graphs = graphsQuery.data?.items ?? [];
+
+    if (!hasSeenEmptyState && !graphsQuery.isLoading && graphs.length === 0) {
+      setAutoShowNewSession(true);
+      localStorage.setItem("hasSeenEmptyState", "true");
+    }
+  }, [graphsQuery.data, graphsQuery.isLoading]);
+
   // Reset manual selection flag when graph changes
   useEffect(() => {
     setManuallySelectedBranch(false);
   }, [selectedGraphId]);
+
+  // Prefetch first branch's linear data when graph details load
+  useEffect(() => {
+    const branches = graphDetailQuery.data?.branches;
+    const firstBranch = branches?.[0];
+
+    if (firstBranch && !selectedBranchId) {
+      // Prefetch the linear query for the first branch
+      void qc.prefetchQuery({
+        queryKey: QUERY_KEYS.branchLinear(firstBranch.id, true),
+        queryFn: async () =>
+          fetchJson<{ items: TimelineItem[]; nextCursor: string | null }>(
+            `/api/v1/branches/${firstBranch.id}/linear?include=references`
+          ),
+      });
+    }
+  }, [graphDetailQuery.data?.branches, selectedBranchId, qc]);
 
   // Select the first branch when graph changes (but only if not manually selected)
   useEffect(() => {
@@ -329,6 +359,12 @@ export default function WorkspaceClient() {
 
     // Step 2: Switch to the new branch and prepare for generation
     if (result?.newBranchId) {
+      // Show success toast
+      toast.success("Branch created successfully!", {
+        description: "Generating AI response...",
+        duration: 3000,
+      });
+
       // Invalidate graph detail to pick up the new branch
       void qc.invalidateQueries({
         queryKey: QUERY_KEYS.graphDetail(selectedGraphId),
@@ -361,6 +397,8 @@ export default function WorkspaceClient() {
         onSelectGraph={setSelectedGraphId}
         onGraphCreated={handleGraphCreated}
         onGraphDeleted={handleGraphDeleted}
+        autoShowNewSession={autoShowNewSession}
+        onNewSessionShown={() => setAutoShowNewSession(false)}
       />
 
       {/* Main Content Area - Centered Chat */}

@@ -85,7 +85,7 @@ function BranchPill({
           size="sm"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          className="transition-all duration-200 hover:bg-accent hover:shadow-md border-muted-foreground/20 gap-1.5"
+          className="transition-all duration-200 hover:bg-accent hover:shadow-md hover:scale-105 active:scale-95 border-muted-foreground/20 gap-1.5"
         >
           <GitBranch className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">{branch.name}</span>
@@ -193,12 +193,14 @@ export function BranchPoint({
         </span>
       </div>
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
-        {alternateBranches.map((branch) => (
-          <BranchPill
+        {alternateBranches.map((branch, idx) => (
+          <div
             key={branch.id}
-            branch={branch}
-            onSelectBranch={onSelectBranch}
-          />
+            className="animate-in fade-in zoom-in-95 duration-200"
+            style={{ animationDelay: `${idx * 75}ms` }}
+          >
+            <BranchPill branch={branch} onSelectBranch={onSelectBranch} />
+          </div>
         ))}
       </div>
     </div>
