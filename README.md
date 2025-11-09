@@ -14,8 +14,8 @@ branch, navigate, and reuse.
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-[Features](#-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) •
-[API](#-api-overview) • [Contributing](#-contributing)
+[Features](#-features) • [Roadmap](#️-roadmap) • [Architecture](#-architecture) •
+[Quick Start](#-quick-start) • [API](#-api-overview) • [Contributing](#-contributing)
 
 </div>
 
@@ -85,6 +85,53 @@ Stream AI responses with Server-Sent Events (SSE) for instant feedback, even on 
 
 Integrated with [Langfuse](https://langfuse.com) for version-controlled prompt management. Update
 system prompts without redeploying.
+
+---
+
+## 🗺️ Roadmap
+
+### ✅ Current Features
+
+- [x] **Individual Context Blocks** - Immutable message blocks with content versioning
+- [x] **Graph Management** - Create, list, view, and delete conversation graphs
+- [x] **Branching Conversations** - Fork from any message to explore alternatives
+- [x] **Context Building** - Build context from branch conversation history
+- [x] **Quota Management** - Track token usage with monthly limits per user
+- [x] **Authentication & Authorization** - Secure user management with Clerk
+- [x] **Real-time Streaming** - SSE-based streaming responses
+- [x] **Visual Branch Navigation** - Tree view of conversation branches
+- [x] **Optimistic Concurrency Control** - Version tracking prevents conflicts
+- [x] **Rate Limiting** - Prevent API abuse with configurable limits
+
+### 🚧 Planned Features
+
+#### Near-term
+
+- [ ] **Global Context Block Library** - Reuse blocks across different graphs
+- [ ] **Traces and Evals** with Langfuse
+- [ ] **Multi-modal Context Blocks** - Support images, files, and rich media
+- [ ] **LLM Provider Selection** - Choose between OpenAI, Anthropic, and local models
+- [ ] **Analytics & Logging** - Comprehensive observability with Langfuse traces
+- [ ] **Full Test Suite** - Unit, integration, and E2E tests
+
+#### Mid-term
+
+- [ ] **Agentic Responses** - AI agents that can use tools and take actions
+- [ ] **Summary Blocks** - Auto-generate summaries of long conversations
+- [ ] **Semantic Branch Merging** - Intelligently merge parallel branches
+- [ ] **Public Block Sharing** - Share context blocks with the community
+- [ ] **Mobile UI Support** - Responsive design optimized for mobile devices
+
+#### Long-term
+
+- [ ] **Collaborative Graphs** - Multi-user real-time collaboration
+- [ ] **Block Marketplace** - Discover and share community-created blocks
+- [ ] **Advanced Search** - Semantic search across all your conversations
+- [ ] **Export & Import** - Portable conversation formats
+- [ ] **Self-hosting Guide** - Complete documentation for self-deployment
+
+> 💡 **Want to contribute?** Check out our [contributing guidelines](#-contributing) and help shape
+> the future of Context Blocks!
 
 ---
 
@@ -457,7 +504,7 @@ Built with:
 
 **Ready to think nonlinearly?** 🌿
 
-Built with ❤️ by [Andreas](https://github.com/YOUR_USERNAME)
+Built with ❤️
 
 [⭐ Star this repo](https://github.com/YOUR_USERNAME/context-blocks) if you find it useful!
 
