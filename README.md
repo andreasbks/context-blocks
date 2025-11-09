@@ -108,7 +108,7 @@ system prompts without redeploying.
 #### Near-term
 
 - [ ] **Global Context Block Library** - Reuse blocks across different graphs
-- [ ] **Legal & GDPR Compliance** templates and endpoints for launching as a service 
+- [ ] **Legal & GDPR Compliance** templates and endpoints for launching as a service
 - [ ] **Traces and Evals** with Langfuse
 - [ ] **Multi-modal Context Blocks** - Support images, files, and rich media
 - [ ] **LLM Provider Selection** - Choose between OpenAI, Anthropic, and local models

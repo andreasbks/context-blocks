@@ -109,6 +109,21 @@ export const SSE_KEEPALIVE_INTERVAL_MS = parseInt(
 export const LOG_LEVEL = process.env.LOG_LEVEL ?? "info";
 
 // ============================================================================
+// Preview Mode Configuration
+// ============================================================================
+
+/**
+ * Enable/disable preview mode (password-protected access)
+ */
+export const PREVIEW_MODE_ENABLED = process.env.PREVIEW_MODE_ENABLED === "true";
+
+/**
+ * Password for preview mode access
+ */
+export const PREVIEW_MODE_PASSWORD =
+  process.env.PREVIEW_MODE_PASSWORD ?? "preview";
+
+// ============================================================================
 // Configuration Validation & Logging
 // ============================================================================
 
@@ -128,5 +143,7 @@ if (process.env.NODE_ENV !== "production") {
     LANGFUSE_BASE_URL,
     LANGFUSE_PROMPT_LABEL,
     LANGFUSE_SYSTEM_PROMPT_NAME,
+    PREVIEW_MODE_ENABLED,
+    PREVIEW_MODE_PASSWORD: PREVIEW_MODE_PASSWORD ? "***" : "(not set)",
   });
 }

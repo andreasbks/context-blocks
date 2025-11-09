@@ -436,6 +436,12 @@ export function ChatArea({
               </div>
             )}
 
+            {/* AI Disclaimer */}
+            <div className="text-center text-xs text-muted-foreground/60 py-2">
+              AI-generated responses may contain errors or inaccuracies. Please
+              verify important information.
+            </div>
+
             {/* Composer - Context Block Style (Inline after messages) */}
             <form onSubmit={onSubmit}>
               <div className="rounded-xl border-2 border-dashed border-muted-foreground/20 bg-card hover:border-muted-foreground/30 transition-all duration-200 hover:shadow-sm">
