@@ -9,28 +9,28 @@ import {
 import { QUERY_KEYS } from "@/lib/constants/query-keys";
 
 type GraphDetail = z.infer<typeof GraphDetailResponse>;
-type ForkResponse = z.infer<typeof AppendForkResponse>;
+type BranchResponse = z.infer<typeof AppendForkResponse>;
 
-interface BranchForkOptions {
+interface BranchCreationOptions {
   graphId: string;
   branchId: string;
-  forkFromNodeId: string;
+  branchFromNodeId: string;
   newBranchName: string;
   onSuccess?: (newBranchId: string) => void;
   onError?: (error: Error) => void;
 }
 
-export function useBranchFork() {
+export function useBranchCreation() {
   const qc = useQueryClient();
 
-  const forkBranch = async ({
+  const createBranch = async ({
     graphId,
     branchId,
-    forkFromNodeId,
+    branchFromNodeId,
     newBranchName,
     onSuccess,
     onError,
-  }: BranchForkOptions) => {
+  }: BranchCreationOptions) => {
     try {
       const res = await fetch(`/api/v1/branches/${branchId}/append`, {
         method: "POST",
@@ -43,7 +43,7 @@ export function useBranchFork() {
           content: {
             text: `📍 Branch "${newBranchName}" created from checkpoint`,
           },
-          forkFromNodeId,
+          forkFromNodeId: branchFromNodeId,
           newBranchName,
         }),
       });
@@ -56,7 +56,7 @@ export function useBranchFork() {
         );
       }
 
-      const data = (await res.json()) as ForkResponse;
+      const data = (await res.json()) as BranchResponse;
 
       // Update graph detail cache with the new branch
       qc.setQueryData<GraphDetail>(QUERY_KEYS.graphDetail(graphId), (old) => {
@@ -93,7 +93,7 @@ export function useBranchFork() {
 
       return data;
     } catch (error) {
-      console.error("Fork branch error:", error);
+      console.error("Create branch error:", error);
 
       // Show error toast
       toast.error("Failed to create branch", {
@@ -110,5 +110,5 @@ export function useBranchFork() {
     }
   };
 
-  return { forkBranch };
+  return { createBranch };
 }

@@ -29,8 +29,8 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
   const sendMessage = async (
     text: string,
     expectedVersion: number | undefined,
-    forkParams?: {
-      forkFromNodeId: string;
+    branchParams?: {
+      branchFromNodeId: string;
       newBranchName: string;
     }
   ): Promise<{ newBranchId?: string } | undefined> => {
@@ -61,10 +61,10 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
       },
     };
 
-    // Add optimistic user message to cache immediately (only if NOT forking)
-    // When forking, we can't add to a non-existent branch cache
+    // Add optimistic user message to cache immediately (only if NOT branching)
+    // When branching, we can't add to a non-existent branch cache
     const queryKey = QUERY_KEYS.branchLinear(capturedBranchId, true);
-    if (!forkParams) {
+    if (!branchParams) {
       qc.setQueryData<LinearQueryData>(queryKey, (old) => {
         if (!old?.items) return old;
         return {
@@ -79,8 +79,8 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
         branchId: capturedBranchId,
         userText: text,
         expectedVersion,
-        forkFromNodeId: forkParams?.forkFromNodeId,
-        newBranchName: forkParams?.newBranchName,
+        branchFromNodeId: branchParams?.branchFromNodeId,
+        newBranchName: branchParams?.newBranchName,
 
         onDelta: (chunk) => {
           // Accumulate streaming assistant response
@@ -88,7 +88,7 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
         },
 
         onFinal: (data) => {
-          // If this was a fork operation, we got a new branch back
+          // If this was a branch operation, we got a new branch back
           if (data.branch) {
             newBranchId = data.branch.id;
 
@@ -98,12 +98,12 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
             });
 
             // Invalidate the new branch's linear query so it fetches complete timeline
-            // (from root to tip, including shared history before the fork)
+            // (from root to tip, including shared history before the branch point)
             void qc.invalidateQueries({
               queryKey: QUERY_KEYS.branchLinear(data.branch.id, true),
             });
           } else {
-            // Normal append (not a fork) - update existing branch
+            // Normal append (not a branch) - update existing branch
             qc.setQueryData<LinearQueryData>(queryKey, (old) => {
               if (!old?.items) return old;
 
@@ -173,8 +173,8 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
             });
           }
 
-          // Remove optimistic message on error (only if not forking)
-          if (!forkParams) {
+          // Remove optimistic message on error (only if not branching)
+          if (!branchParams) {
             qc.setQueryData<LinearQueryData>(queryKey, (old) => {
               if (!old?.items) return old;
               return {
@@ -199,8 +199,8 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
         description: err instanceof Error ? err.message : "Please try again.",
       });
 
-      // Remove optimistic message on error (only if not forking)
-      if (!forkParams) {
+      // Remove optimistic message on error (only if not branching)
+      if (!branchParams) {
         qc.setQueryData<LinearQueryData>(queryKey, (old) => {
           if (!old?.items) return old;
           return {
@@ -218,11 +218,11 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
     }
   };
 
-  const appendFork = async (
+  const appendBranch = async (
     text: string,
     expectedVersion: number | undefined,
-    forkParams: {
-      forkFromNodeId: string;
+    branchParams: {
+      branchFromNodeId: string;
       newBranchName: string;
     }
   ): Promise<{ newBranchId: string; version: number } | undefined> => {
@@ -243,8 +243,8 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
             author: "user",
             content: { text },
             expectedVersion,
-            forkFromNodeId: forkParams.forkFromNodeId,
-            newBranchName: forkParams.newBranchName,
+            forkFromNodeId: branchParams.branchFromNodeId,
+            newBranchName: branchParams.newBranchName,
           }),
         }
       );
@@ -257,7 +257,7 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
       const data = await response.json();
 
       if (data.branch) {
-        // Fork was created successfully
+        // Branch was created successfully
         const newBranchId = data.branch.id;
         const version = data.branch.version;
 
@@ -266,7 +266,7 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
 
       return undefined;
     } catch (err) {
-      console.error("Append fork error:", err);
+      console.error("Append branch error:", err);
       toast.error("Failed to create branch", {
         description: err instanceof Error ? err.message : "Please try again.",
       });
@@ -281,7 +281,7 @@ export function useChat({ branchId, graphId }: UseChatOptions) {
     isStreaming,
     scrollRef,
     sendMessage,
-    appendFork,
+    appendBranch,
   };
 }
 
@@ -289,7 +289,7 @@ async function sendStream({
   branchId,
   userText,
   expectedVersion,
-  forkFromNodeId,
+  branchFromNodeId,
   newBranchName,
   onDelta,
   onFinal,
@@ -298,7 +298,7 @@ async function sendStream({
   branchId: string;
   userText: string;
   expectedVersion?: number;
-  forkFromNodeId?: string;
+  branchFromNodeId?: string;
   newBranchName?: string;
   onDelta?: (chunk: string) => void;
   onFinal?: (data: {
@@ -326,8 +326,8 @@ async function sendStream({
     expectedVersion,
   };
 
-  if (forkFromNodeId) {
-    body.forkFromNodeId = forkFromNodeId;
+  if (branchFromNodeId) {
+    body.forkFromNodeId = branchFromNodeId;
     body.newBranchName = newBranchName;
   }
 

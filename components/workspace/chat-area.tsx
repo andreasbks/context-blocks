@@ -25,7 +25,7 @@ import {
 type TimelineItem = z.infer<typeof LinearResponse>["items"][number];
 type GraphDetail = z.infer<typeof GraphDetailResponse>;
 
-interface ForkContext {
+interface BranchContext {
   nodeId: string;
   branchName: string;
   messageText: string;
@@ -46,12 +46,13 @@ interface ChatAreaProps {
   isStreaming: boolean;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   onSubmit: (e: React.FormEvent) => void;
-  forkContext: ForkContext | null;
-  onStartFork: (nodeId: string, messageText: string) => void;
-  onCancelFork: () => void;
-  forkComposer: string;
-  setForkComposer: (value: string) => void;
-  onSubmitFork: (e: React.FormEvent) => void;
+  onBranchFromTip: (text: string) => Promise<void>;
+  branchContext: BranchContext | null;
+  onStartBranch: (nodeId: string, messageText: string) => void;
+  onCancelBranch: () => void;
+  branchComposer: string;
+  setBranchComposer: (value: string) => void;
+  onSubmitBranch: (e: React.FormEvent) => void;
 }
 
 export function ChatArea({
@@ -66,12 +67,13 @@ export function ChatArea({
   isStreaming,
   scrollRef,
   onSubmit,
-  forkContext,
-  onStartFork,
-  onCancelFork,
-  forkComposer,
-  setForkComposer,
-  onSubmitFork,
+  onBranchFromTip,
+  branchContext,
+  onStartBranch,
+  onCancelBranch,
+  branchComposer,
+  setBranchComposer,
+  onSubmitBranch,
 }: ChatAreaProps) {
   const [shouldAnimate, setShouldAnimate] = useState(true);
 
@@ -300,8 +302,8 @@ export function ChatArea({
                   >
                     <MessageItem
                       item={item}
-                      showBranchButton={!forkContext}
-                      onStartFork={onStartFork}
+                      showBranchButton={!branchContext}
+                      onStartBranch={onStartBranch}
                       branchPointContent={
                         shouldShowPills && alternateBranches.length > 0 ? (
                           <BranchPoint
@@ -313,10 +315,10 @@ export function ChatArea({
                       }
                     />
 
-                    {/* Inline Fork Composer - Show if this is the fork context node */}
-                    {forkContext && forkContext.nodeId === item.nodeId && (
+                    {/* Inline Branch Composer - Show if this is the branch context node */}
+                    {branchContext && branchContext.nodeId === item.nodeId && (
                       <div className="my-4 ml-6 animate-in fade-in slide-in-from-top-4 duration-500 ease-out">
-                        <form onSubmit={onSubmitFork}>
+                        <form onSubmit={onSubmitBranch}>
                           <div className="relative rounded-xl border-2 border-dashed border-primary/30 bg-card hover:border-primary/50 transition-all duration-300 hover:shadow-lg">
                             {/* Subtle glow effect */}
                             <div
@@ -333,9 +335,9 @@ export function ChatArea({
                                     <GitBranch className="mr-1 h-3 w-3 animate-in spin-in-90 duration-500" />
                                     Creating new branch
                                   </Badge>
-                                  {forkComposer.length > 0 && (
+                                  {branchComposer.length > 0 && (
                                     <span className="text-xs text-muted-foreground animate-in fade-in slide-in-from-left-2 duration-200">
-                                      {forkComposer.length} characters
+                                      {branchComposer.length} characters
                                     </span>
                                   )}
                                 </div>
@@ -344,7 +346,7 @@ export function ChatArea({
                                     type="submit"
                                     size="sm"
                                     disabled={
-                                      !forkComposer.trim() || isStreaming
+                                      !branchComposer.trim() || isStreaming
                                     }
                                     className="min-w-[100px] transition-all duration-200"
                                   >
@@ -370,7 +372,7 @@ export function ChatArea({
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    onClick={onCancelFork}
+                                    onClick={onCancelBranch}
                                     disabled={isStreaming}
                                     className="h-8 px-2 hover:bg-destructive/10 hover:text-destructive transition-all duration-200 hover:scale-110 active:scale-95"
                                   >
@@ -381,9 +383,9 @@ export function ChatArea({
                               <div className="px-4 py-3 animate-in fade-in duration-300 delay-100">
                                 <Textarea
                                   placeholder="Type your message to start the new branch... (Press Enter to send, Shift+Enter for new line)"
-                                  value={forkComposer}
+                                  value={branchComposer}
                                   onChange={(e) =>
-                                    setForkComposer(e.target.value)
+                                    setBranchComposer(e.target.value)
                                   }
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter" && !e.shiftKey) {
@@ -455,43 +457,131 @@ export function ChatArea({
                       </span>
                     )}
                   </div>
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={
-                      !composer.trim() || !selectedBranchId || isStreaming
-                    }
-                    className="min-w-[100px]"
-                  >
-                    {isStreaming ? (
-                      <span className="animate-pulse">Sending...</span>
-                    ) : (
-                      <>
-                        Send
-                        <span className="ml-1.5">→</span>
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={
+                        !composer.trim() || !selectedBranchId || isStreaming
+                      }
+                      className="min-w-[90px]"
+                    >
+                      {isStreaming ? (
+                        <span className="animate-pulse">Sending...</span>
+                      ) : (
+                        <>
+                          Send
+                          <span className="ml-1.5">→</span>
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        !composer.trim() || !selectedBranchId || isStreaming
+                      }
+                      onClick={async () => {
+                        if (!selectedBranchId || !composer.trim()) return;
+                        const text = composer.trim();
+                        setComposer("");
+                        await onBranchFromTip(text);
+                      }}
+                      className="min-w-[90px] border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 hover:border-amber-500/70 text-amber-700 dark:text-amber-400 animate-subtle-pulse disabled:animate-none"
+                    >
+                      <GitBranch className="mr-1.5 h-3.5 w-3.5" />
+                      Branch
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Content Area */}
                 <div className="px-4 py-3">
                   <Textarea
-                    placeholder="Type your message here... (Press Enter to send, Shift+Enter for new line)"
+                    placeholder="Type your message here..."
                     value={composer}
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                       setComposer(e.target.value)
                     }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
+                    onKeyDown={async (e) => {
+                      // Cmd/Ctrl + Shift + Enter: Branch from tip
+                      if (
+                        e.key === "Enter" &&
+                        (e.metaKey || e.ctrlKey) &&
+                        e.shiftKey
+                      ) {
+                        e.preventDefault();
+                        if (
+                          !selectedBranchId ||
+                          !composer.trim() ||
+                          isStreaming
+                        )
+                          return;
+
+                        const text = composer.trim();
+                        setComposer("");
+                        await onBranchFromTip(text);
+                        return;
+                      }
+
+                      // Cmd/Ctrl + Enter: Send to tip (explicit)
+                      if (
+                        e.key === "Enter" &&
+                        (e.metaKey || e.ctrlKey) &&
+                        !e.shiftKey
+                      ) {
                         e.preventDefault();
                         e.currentTarget.form?.requestSubmit();
+                        return;
                       }
+
+                      // Enter alone: Send to tip (if not shift)
+                      if (
+                        e.key === "Enter" &&
+                        !e.shiftKey &&
+                        !e.metaKey &&
+                        !e.ctrlKey
+                      ) {
+                        e.preventDefault();
+                        e.currentTarget.form?.requestSubmit();
+                        return;
+                      }
+
+                      // Shift + Enter: New line (default behavior, no preventDefault)
                     }}
                     rows={3}
                     disabled={!selectedBranchId || isStreaming}
                     className="resize-none border-0 p-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent placeholder:text-muted-foreground/50"
                   />
+                </div>
+
+                {/* Keyboard Shortcut Hints */}
+                <div className="px-4 pb-3 pt-2 border-t border-border/50">
+                  <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <kbd className="px-2 py-1 bg-muted/50 border border-border/50 rounded font-mono text-xs font-semibold">
+                        ⏎
+                      </kbd>
+                      <span>send</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <kbd className="px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded font-mono text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        {typeof navigator !== "undefined" &&
+                        navigator.platform.toLowerCase().includes("mac")
+                          ? "⌘"
+                          : "Ctrl"}
+                        ⇧⏎
+                      </kbd>
+                      <span>branch</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <kbd className="px-2 py-1 bg-muted/50 border border-border/50 rounded font-mono text-xs font-semibold">
+                        ⇧⏎
+                      </kbd>
+                      <span>new line</span>
+                    </span>
+                  </div>
                 </div>
               </div>
             </form>
