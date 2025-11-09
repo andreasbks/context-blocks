@@ -491,7 +491,7 @@ export function ChatArea({
                       className="min-w-[90px] border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 hover:border-amber-500/70 text-amber-700 dark:text-amber-400 animate-subtle-pulse disabled:animate-none"
                     >
                       <GitBranch className="mr-1.5 h-3.5 w-3.5" />
-                      Branch
+                      Branch + Send
                     </Button>
                   </div>
                 </div>

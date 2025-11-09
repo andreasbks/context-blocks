@@ -85,10 +85,10 @@ function BranchPill({
           size="sm"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          className="transition-all duration-200 hover:bg-accent hover:shadow-md hover:scale-105 active:scale-95 border-muted-foreground/20 gap-1.5"
+          className="transition-all duration-200 hover:bg-accent hover:shadow-md hover:scale-[1.02] active:scale-95 border-muted-foreground/20 gap-1.5 max-w-[280px] flex-shrink-0"
         >
-          <GitBranch className="h-3.5 w-3.5" />
-          <span className="text-xs font-medium">{branch.name}</span>
+          <GitBranch className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="text-xs font-medium truncate">{branch.name}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -186,18 +186,18 @@ export function BranchPoint({
 
   return (
     <div className="mt-3 border-t pt-3">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-2.5">
         <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">
           Alternate branches
         </span>
       </div>
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+      <div className="flex flex-wrap items-center gap-2 pb-1">
         {alternateBranches.map((branch, idx) => (
           <div
             key={branch.id}
-            className="animate-in fade-in zoom-in-95 duration-200"
-            style={{ animationDelay: `${idx * 75}ms` }}
+            className="animate-in fade-in slide-in-from-bottom-1 duration-300"
+            style={{ animationDelay: `${idx * 50}ms` }}
           >
             <BranchPill branch={branch} onSelectBranch={onSelectBranch} />
           </div>
