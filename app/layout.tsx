@@ -5,6 +5,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "next-themes";
 
 import { ErrorBoundary } from "@/components/error-boundary";
+import Footer from "@/components/ui/footer";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/lib/providers/query-provider";
 
@@ -62,6 +63,7 @@ export default function RootLayout({
                 <div className="min-h-screen flex flex-col">
                   <Navbar />
                   <main className="flex-1 w-full pt-16">{children}</main>
+                  <Footer />
                 </div>
                 <Toaster />
               </ThemeProvider>
