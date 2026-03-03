@@ -58,6 +58,18 @@ export default async function Home() {
                 <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </Button>
             </Link>
+            {!isAuthenticated && (
+              <Link href="/try" className="group">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="text-base px-8 h-12"
+                >
+                  Try it now
+                  <Sparkles className="ml-2 h-4 w-4 group-hover:rotate-12 transition-transform" />
+                </Button>
+              </Link>
+            )}
           </div>
 
           <p className="text-sm text-muted-foreground">
@@ -302,7 +314,7 @@ export default async function Home() {
             Join developers exploring ideas in ways chat was never meant to
             support.
           </p>
-          <div className="pt-4">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
             <Link
               href={isAuthenticated ? "/workspace" : "/auth/sign-up"}
               className="group"
@@ -312,6 +324,18 @@ export default async function Home() {
                 <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </Button>
             </Link>
+            {!isAuthenticated && (
+              <Link href="/try" className="group">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="text-base px-8 h-12"
+                >
+                  Or try it first
+                  <Sparkles className="ml-2 h-4 w-4 group-hover:rotate-12 transition-transform" />
+                </Button>
+              </Link>
+            )}
           </div>
           <p className="text-sm text-muted-foreground">
             Free to start. No credit card required.
