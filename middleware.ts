@@ -9,9 +9,14 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (!isPublicRoute(req)) {
-    await auth.protect();
-  }
+  if (isPublicRoute(req)) return;
+
+  // Allow requests with a demo-session cookie through;
+  // requireOwner() will validate the cookie against the DB.
+  const demoSession = req.cookies.get("demo-session");
+  if (demoSession?.value) return;
+
+  await auth.protect();
 });
 
 export const config = {
