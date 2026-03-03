@@ -9,9 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function TryPage() {
-  return (
-    <div className="flex-1 w-full">
-      <DemoClient />
-    </div>
-  );
+  return <DemoClient />;
 }

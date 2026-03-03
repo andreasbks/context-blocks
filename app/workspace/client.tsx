@@ -2,14 +2,10 @@
 
 import { useEffect, useState } from "react";
 
-import Link from "next/link";
-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { Button } from "@/components/ui/button";
 import { BranchTreeSidebar } from "@/components/workspace/branch-tree-sidebar";
 import { ChatArea } from "@/components/workspace/chat-area";
 import { Sidebar } from "@/components/workspace/sidebar";
@@ -451,86 +447,67 @@ export default function WorkspaceClient({
 
   return (
     <div
-      className="relative flex flex-col w-full overflow-hidden"
-      style={{ height: "calc(100vh - 4rem)" }}
+      className={`relative flex w-full overflow-hidden ${isDemo ? "h-full" : "h-[calc(100vh-4rem)]"}`}
     >
-      {/* Demo Banner */}
-      {isDemo && (
-        <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b bg-primary/5 z-40">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span>Demo mode &mdash; your session expires in 24h.</span>
-          </div>
-          <Link href="/auth/sign-up">
-            <Button variant="outline" size="sm" className="text-xs h-7">
-              Sign up for full access
-              <ArrowRight className="ml-1.5 h-3 w-3" />
-            </Button>
-          </Link>
+      {/* Left Sidebar */}
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onOpen={() => setSidebarOpen(true)}
+        graphsQuery={graphsQuery}
+        selectedGraphId={selectedGraphId}
+        onSelectGraph={setSelectedGraphId}
+        onGraphCreated={handleGraphCreated}
+        onGraphDeleted={handleGraphDeleted}
+        autoShowNewSession={autoShowNewSession}
+        onNewSessionShown={() => setAutoShowNewSession(false)}
+      />
+
+      {/* Main Content Area - Centered Chat */}
+      <main
+        className="flex-1 transition-all duration-300 ease-in-out"
+        style={{
+          marginLeft: sidebarOpen ? "320px" : "48px",
+          marginRight: branchTreeOpen ? `${branchTreeWidth}px` : "48px",
+        }}
+      >
+        <div className="h-full flex flex-col">
+          {/* Chat Area */}
+          <ChatArea
+            selectedGraphId={selectedGraphId}
+            selectedBranchId={selectedBranchId}
+            onSelectBranch={setSelectedBranchId}
+            graphDetailQuery={graphDetailQuery}
+            linearQuery={linearQuery}
+            composer={chat.composer}
+            setComposer={chat.setComposer}
+            streamingAssistant={
+              chat.streamingAssistant || creationStreamingAssistant
+            }
+            isStreaming={chat.isStreaming || isCreationStreaming}
+            scrollRef={chat.scrollRef}
+            onSubmit={handleSubmit}
+            onBranchFromTip={handleBranchFromTip}
+            branchContext={branchContext}
+            onStartBranch={handleStartBranch}
+            onCancelBranch={handleCancelBranch}
+            branchComposer={branchComposer}
+            setBranchComposer={setBranchComposer}
+            onSubmitBranch={handleSubmitBranch}
+          />
         </div>
-      )}
+      </main>
 
-      <div className="relative flex flex-1 w-full overflow-hidden">
-        {/* Left Sidebar */}
-        <Sidebar
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          onOpen={() => setSidebarOpen(true)}
-          graphsQuery={graphsQuery}
-          selectedGraphId={selectedGraphId}
-          onSelectGraph={setSelectedGraphId}
-          onGraphCreated={handleGraphCreated}
-          onGraphDeleted={handleGraphDeleted}
-          autoShowNewSession={autoShowNewSession}
-          onNewSessionShown={() => setAutoShowNewSession(false)}
-        />
-
-        {/* Main Content Area - Centered Chat */}
-        <main
-          className="flex-1 transition-all duration-300 ease-in-out"
-          style={{
-            marginLeft: sidebarOpen ? "320px" : "48px",
-            marginRight: branchTreeOpen ? `${branchTreeWidth}px` : "48px",
-          }}
-        >
-          <div className="h-full flex flex-col">
-            {/* Chat Area */}
-            <ChatArea
-              selectedGraphId={selectedGraphId}
-              selectedBranchId={selectedBranchId}
-              onSelectBranch={setSelectedBranchId}
-              graphDetailQuery={graphDetailQuery}
-              linearQuery={linearQuery}
-              composer={chat.composer}
-              setComposer={chat.setComposer}
-              streamingAssistant={
-                chat.streamingAssistant || creationStreamingAssistant
-              }
-              isStreaming={chat.isStreaming || isCreationStreaming}
-              scrollRef={chat.scrollRef}
-              onSubmit={handleSubmit}
-              onBranchFromTip={handleBranchFromTip}
-              branchContext={branchContext}
-              onStartBranch={handleStartBranch}
-              onCancelBranch={handleCancelBranch}
-              branchComposer={branchComposer}
-              setBranchComposer={setBranchComposer}
-              onSubmitBranch={handleSubmitBranch}
-            />
-          </div>
-        </main>
-
-        {/* Right Branch Tree Sidebar */}
-        <BranchTreeSidebar
-          branches={graphDetailQuery.data?.branches ?? []}
-          activeBranchId={selectedBranchId}
-          isOpen={branchTreeOpen}
-          onToggle={() => setBranchTreeOpen((prev) => !prev)}
-          onSelectBranch={setSelectedBranchId}
-          width={branchTreeWidth}
-          onWidthChange={setBranchTreeWidth}
-        />
-      </div>
+      {/* Right Branch Tree Sidebar */}
+      <BranchTreeSidebar
+        branches={graphDetailQuery.data?.branches ?? []}
+        activeBranchId={selectedBranchId}
+        isOpen={branchTreeOpen}
+        onToggle={() => setBranchTreeOpen((prev) => !prev)}
+        onSelectBranch={setSelectedBranchId}
+        width={branchTreeWidth}
+        onWidthChange={setBranchTreeWidth}
+      />
     </div>
   );
 }
